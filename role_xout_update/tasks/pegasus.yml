@@ -1,0 +1,25 @@
+---
+- name: Set Pegasus active={{ xout_pegasus_active | int }}
+  ansible.builtin.shell: |
+    set -o pipefail
+    {{ hostvars[xout_oracle_hosts[0]].sql_plus }} -S \
+      {{ hostvars[xout_oracle_hosts[0]].oracle_user }}/{{ hostvars[xout_oracle_hosts[0]].oracle_pass }}@{{ hostvars[xout_oracle_hosts[0]].oracle_sid }} <<'SQL'
+    WHENEVER SQLERROR EXIT SQL.SQLCODE
+    SET PAGESIZE 0 FEEDBACK ON VERIFY OFF HEADING OFF ECHO OFF
+    UPDATE pegasus_plugins
+       SET active={{ xout_pegasus_active | int }}
+     WHERE TYPE=4
+       AND active<> {{ xout_pegasus_active | int }};
+    COMMIT;
+    EXIT;
+    SQL
+  args:
+    executable: /bin/bash
+  environment:
+    ORACLE_HOME: "{{ hostvars[xout_oracle_hosts[0]].oracle_home }}"
+    ORACLE_SID: "{{ hostvars[xout_oracle_hosts[0]].oracle_sid }}"
+  delegate_to: "{{ xout_oracle_hosts[0] }}"
+  register: xout_pegasus_sql
+  changed_when: true
+  no_log: true
+  when: xout_manage_pegasus | bool
