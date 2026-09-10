@@ -1,0 +1,66 @@
+---
+- name: Apply exact package plan in parallel
+  block:
+    - name: Launch exact package apply jobs
+      ansible.builtin.command:
+        argv: >-
+          {{
+            [
+              xout_manager_path,
+              '--json',
+              '--non-interactive',
+              '--max-wait=' ~ (xout_manager_max_wait | string),
+              'package-apply'
+            ]
+            + (
+                xout_host_packages[xout_apply_host]
+                | map('regex_replace', '^(.*)$', '--package=\\1')
+                | list
+              )
+            + ['--release-file=/var/tmp/xout-execution-' ~ xout_run_id ~ '.ini']
+            + (['--allow-downgrade'] if xout_allow_downgrade | bool else [])
+          }}
+      delegate_to: "{{ xout_apply_host }}"
+      loop: "{{ xout_change_hosts }}"
+      loop_control:
+        loop_var: xout_apply_host
+        label: "{{ xout_apply_host }}"
+      async: "{{ xout_manager_async_timeout }}"
+      poll: 0
+      changed_when: true
+      register: xout_apply_jobs
+
+    - name: Wait for exact package apply jobs
+      ansible.builtin.async_status:
+        jid: "{{ xout_apply_job.ansible_job_id }}"
+      delegate_to: "{{ xout_apply_job.xout_apply_host }}"
+      loop: "{{ xout_apply_jobs.results }}"
+      loop_control:
+        loop_var: xout_apply_job
+        label: "{{ xout_apply_job.xout_apply_host }}"
+      register: xout_apply_wait
+      until: xout_apply_wait.finished | bool
+      retries: "{{ ((xout_manager_async_timeout | int) / 2) | round(0, 'ceil') | int + 1 }}"
+      delay: 2
+      failed_when: false
+
+    - name: Require successful package apply on every changed host
+      ansible.builtin.assert:
+        that:
+          - item.rc | default(1) == 0
+        fail_msg: >-
+          Package apply failed on {{ item.xout_apply_job.xout_apply_host }}.
+          rc={{ item.rc | default('unknown') }} stderr={{ item.stderr | default('') }}.
+          The XOUT environment intentionally remains DOWN.
+      loop: "{{ xout_apply_wait.results }}"
+      loop_control:
+        label: "{{ item.xout_apply_job.xout_apply_host }}"
+  always:
+    - name: Remove exact execution target files
+      ansible.builtin.file:
+        path: "/var/tmp/xout-execution-{{ xout_run_id }}.ini"
+        state: absent
+      delegate_to: "{{ item }}"
+      loop: "{{ xout_change_hosts }}"
+      loop_control:
+        label: "{{ item }}"
