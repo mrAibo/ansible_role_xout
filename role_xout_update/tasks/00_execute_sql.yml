@@ -1,0 +1,22 @@
+---
+    - name: Führe SQL-Update via sqlplus aus
+      shell: |
+        {{ sql_plus }} -S {{ oracle_user  }}/{{ oracle_pass }}@{{ oracle_sid }} <<EOF
+        SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+        {{ sql_query }};
+        EXIT;
+        EOF
+      args:
+        executable: /bin/bash
+      environment:
+        ORACLE_HOME: "{{ oracle_home }}"
+        ORACLE_SID: "{{ oracle_sid }}"
+      register: sql_result
+      changed_when: "'Enterprise' in sql_result.stdout"  # Optional: Markiere als geändert, wenn Update erfolgreich
+      when: "'ora_db' in group_names"
+
+    - name: Display SQL result
+      ansible.builtin.debug:
+        msg: "{{ sql_result.stdout_lines }}"
+      when: "'ora_db' in group_names"
+      failed_when: "'FEHLER' in sql_result.stdout"      

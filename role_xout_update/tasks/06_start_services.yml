@@ -1,0 +1,131 @@
+---
+- name: Gather service_facts
+  service_facts:
+  when: "'modeshape' in group_names"
+  tags: xout_start
+
+- name: DEBUG
+  debug:
+    var: ansible_facts.services['xout-modeshape.service']
+  when: "'modeshape' in group_names"
+  tags: xout_start
+# - name: Start xout-modeshape service
+  # systemd:
+    # name: xout-modeshape
+    # state: started
+  # when: "'modeshape' in group_names"
+  # register: modeshape_systemd_status
+  # tags: xout_start
+
+- name: Check state of ModeShape Service
+  shell: systemctl is-active xout-modeshape
+  register: modeshape_systemd_status
+  when: "'modeshape' in group_names"
+  tags: xout_start
+
+- name: Entferne Zeile aus einer server.log
+  ansible.builtin.lineinfile:
+    path: /var/log/xout/modeshape/server.log
+    regexp: '^.*Started ModeShapeServer in.*$'
+    state: absent
+  when: "'modeshape' in group_names and modeshape_systemd_status.stdout == 'inactive'"
+  tags: xout_start
+
+# - name: Start xout-modeshape service
+  # systemd:
+    # name: xout-modeshape
+    # state: started
+  # when: "'modeshape' in group_names"
+  # register: modeshape_systemd_status
+  # tags: xout_start
+
+- name: Start XOUT ModeShape Systemd Service
+  shell: "sudo /usr/bin/systemctl start xout-modeshape.service"
+  when: "'modeshape' in group_names and modeshape_systemd_status.stdout == 'inactive'"
+  register: modeshape_service_status
+  tags: xout_start
+
+- name: ModeShape Service State
+  debug:
+    var: modeshape_systemd_status.stdout 
+  when: "'modeshape' in group_names"
+  tags: xout_start
+
+- name: Wait for 'Started ModeShapeServer' message in server.log
+  wait_for:
+    path: /var/log/xout/modeshape/server.log
+    search_regex: 'Started ModeShapeServer in'
+  when: "'modeshape' in group_names and modeshape_systemd_status.stdout == 'inactive'"
+  tags: xout_start
+
+
+
+# - name: Start remaining XOUT Services
+#   ansible.builtin.systemd:
+#     name: "{{ item }}"
+#     state: started
+#   loop:
+#     - xout-activemq-artemis.service
+#     - xout-pmc.service
+#     - cups.service
+#     - xout-portal.service
+#     - xout-batchsplitter.service
+#     - xout-web.service
+#   when: item in ansible_facts.services
+#   tags: xout_start
+#   ignore_errors: true
+
+
+# - name: Start XOUT Systemd Services
+  # become: yes
+  # systemd:
+    # name: "{{ item.service }}"
+    # state: started
+  # loop:
+    # - { service: xout-web, group: web }
+    # - { service: xout-portal, group: portal }
+    # - { service: xout-pmc, group: pmc }
+    # - { service: xout-activemq-artemis, group: activemq }
+  # when: "item.group in group_names"
+  # tags: xout_start
+
+# - name: Gather service facts
+  # ansible.builtin.service_facts:
+  # tags: xout_start
+
+- name: Start XOUT services (group-based)
+  ansible.builtin.shell: "sudo /usr/bin/systemctl start {{ item.service }}"
+  loop:
+    - { group: "web",       service: "xout-web" }
+    - { group: "tobi",      service: "xout-web" }
+    - { group: "portal",    service: "xout-portal" }
+    - { group: "pmc",       service: "xout-pmc" }
+    - { group: "activemq",  service: "xout-activemq-artemis" }
+  loop_control:
+    label: "{{ item.group }} - {{ item.service }}"
+  #vars:
+    #unit: "{{ item.service }}.service"
+  when:
+    - item.group in group_names
+    #- ansible_facts.get('services', {}).get(unit, {}).get('state') == 'stopped'
+    # - ansible_facts.get('services', {}).get(unit, {}).get('status') == 'enabled'
+  tags: xout_start
+
+- name: Disable XOUT services (group-based)
+  ansible.builtin.shell: "sudo /usr/bin/systemctl disable {{ item.service }}"
+  loop:
+    - { group: "web",       service: "xout-web" }
+    - { group: "tobi",      service: "xout-web" }
+    - { group: "portal",    service: "xout-portal" }
+    - { group: "pmc",       service: "xout-pmc" }
+    - { group: "activemq",  service: "xout-activemq-artemis" }
+    - { group: "modeshape", service: "xout-modeshape" }
+  loop_control:
+    label: "{{ item.service }}"
+  #vars:
+    #unit: "{{ item.service }}.service"
+  when:
+    - item.group in group_names
+    # - ansible_facts.get('services', {}).get(unit, {}).get('state') == 'stopped'
+    #- ansible_facts.get('services', {}).get(unit, {}).get('status') == 'enabled'
+  tags: xout_start

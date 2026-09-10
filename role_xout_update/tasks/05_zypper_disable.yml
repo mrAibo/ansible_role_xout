@@ -1,0 +1,30 @@
+---
+# - name: Disable xout-repo Zypper Repository
+#   become: no  # This will use sudo to escalate privileges
+#   become_user: xout-adm
+#   become_method: sudo
+#   ansible.builtin.zypper_repository:
+#     name: xout-repo
+#     repo: "file://{{ repo }}"
+#     state: present
+#     enabled: no
+#   tags: 
+#     - zypper_refresh
+
+- name: Zypper disable repository
+  shell: sudo /usr/bin/zypper mr -d xout-repo
+  args:
+      executable: /bin/bash
+  when: "'XOUT_HB' in group_names or 'XOUT_NDS' in group_names"
+  tags: 
+    - zypper_refresh
+
+#- name: Zypper-Repository deaktivieren
+#  community.general.zypper_repository:
+#    name: xout-repo
+#    state: present
+#    enabled: no
+#  become: yes
+#  when: "'XOUT_HB' in group_names or 'XOUT_NDS' in group_names"
+#  tags:
+#    - zypper_refresh

@@ -1,0 +1,137 @@
+---
+- name: Update xout-modeshape package if installed
+  command: sudo zypper -n --no-gpg-checks update --download-as-needed -t package xout-modeshape
+  when: "'modeshape' in group_names"
+
+- name: Entferne Zeile aus der ModeShape server.log
+  ansible.builtin.lineinfile:
+    path: /var/log/xout/modeshape/server.log
+    regexp: '^.*Started ModeShapeServer in.*$'
+    state: absent
+  when: "'modeshape' in group_names"
+  tags: xout_start
+
+# - name: Start xout-modeshape service
+#   systemd:
+#     name: xout-modeshape
+#     state: started
+#   when: "'modeshape' in group_names"
+#   register: modeshape_service_install_status
+#   tags: xout_start
+
+- name: Start XOUT ModeShape Systemd Service
+  shell: sudo systemctl start xout-modeshape
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: xout-adm  
+  when: "'modeshape' in group_names"
+  register: modeshape_service_install_status
+  tags: xout_start
+
+- name: Wait for 'Started ModeShapeServer' message in server.log
+  wait_for:
+    path: /var/log/xout/modeshape/server.log
+    search_regex: 'Started ModeShapeServer in'
+  when: "'modeshape' in group_names and modeshape_service_install_status.changed"
+
+- name: Update xout-artemis package if installed
+  command: sudo zypper -n --no-gpg-checks update --download-as-needed -t package activemq-artemis-xout
+  when: "'activemq' in group_names" 
+
+- name: Start XOUT AMQ Systemd Service
+  shell: sudo systemctl start xout-activemq-artemis
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: xout-adm
+  when: "'activemq' in group_names"
+  tags: xout_start
+
+- name: Update xout-pmc package if installed
+  command: sudo zypper -n --no-gpg-checks update --download-as-needed -t package xout-pmc
+  when: "'pmc' in group_names"
+
+- name: Entferne Zeile aus der PMC server.log
+  ansible.builtin.lineinfile:
+    path: /var/log/xout/pmc/server.log
+    regexp: '^.*WFLYSRV0212.*$'
+    state: absent
+  when: "'pmc' in group_names"
+  tags: xout_start
+
+- name: Start XOUT PMC Systemd Service
+  shell: sudo systemctl start xout-pmc
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: xout-adm
+  when: "'pmc' in group_names"
+  tags: xout_start
+
+- name: Wait for 'WFLYSRV0212' message in server.log
+  wait_for:
+    path: /var/log/xout/pmc/server.log
+    search_regex: 'WFLYSRV0212: Resuming server'
+  when: "'pmc' in group_names"
+  tags: xout_start
+
+# - name: Warte 20 Sekunden bis XOUT PMC gestartet ist
+#   ansible.builtin.pause:
+#     seconds: 20
+#   tags: xout_start
+
+- name: Update xout-portal package if installed
+  command: sudo zypper -n --no-gpg-checks update --download-as-needed -t package xout-portal
+  when: "'portal' in group_names"
+
+- name: Start XOUT Portal Systemd Service
+  shell: sudo systemctl start xout-portal
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: xout-adm
+  when: "'portal' in group_names"
+  tags: xout_start
+
+- name: Start cups Service
+  shell: sudo systemctl start cups
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: xout-adm
+  when: "'portal' in group_names"
+  tags: xout_start
+
+- name: Update xout-web package if installed
+  command: sudo zypper -n --no-gpg-checks update --download-as-needed -t package xout-web
+  when: "'web' in group_names or 'tobi' in group_names"
+
+- name: Start XOUT Web Systemd Service
+  shell: sudo systemctl start xout-web
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: xout-adm
+  when: "'web' in group_names"
+  tags: xout_start
+
+- name: Update xout-batchsplitter package if installed
+  command: sudo zypper -n --no-gpg-checks update --download-as-needed -t package xout-batchsplitter
+  when: "'batchsplitter' in group_names"
+
+- name: Start XOUT Web Systemd Service
+  shell: sudo systemctl start xout-batchsplitter
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: xout-adm
+  when: "'batchsplitter' in group_names"
+  tags: xout_start
+
+# - name: Start xout-batchsplitter service
+#   systemd:
+#     name: xout-batchsplitter
+#     state: started
+#   when: "'batchsplitter' in group_names"
+#   tags: xout_start

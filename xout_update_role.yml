@@ -1,0 +1,34 @@
+---
+- name: XOUT Update ausführen
+  hosts: all
+  become: no
+  gather_facts: true
+  vars_files:
+    - "/ansible/XOUT/install.properties"
+  vars:
+    KASSE: "{{ xout_environment.split('_')[0] }}"
+    UMGEBUNG: "{{ xout_environment.split('_')[1] }}"
+    patterns:
+      - "xout-web-packaging-*.rpm"
+      - "xout-pmc-packaging-*.rpm"
+      - "temurin-*.rpm"
+      - "portal-rpm-*.rpm"
+      - "modeshape-rpm-*.rpm"
+      - "batchsplitter-rpm-*.rpm"
+      - "activemq-artemis-xout-rpm-*.rpm"
+    services:
+      - "xout-web"
+      - "xout-pmc"
+      - "xout-portal"
+      - "xout-activemq-artemis"
+      - "xout-modeshape"
+
+
+#  tasks:
+#    - name: Package Fakten sammeln
+#      package_facts:
+#        manager: auto
+
+  roles:
+    - role_xout_update
+

@@ -1,0 +1,31 @@
+# - name: Stop and disable XOUT services (group-based)
+  # become: yes
+  # become_user: xout-adm
+  # become_method: sudo
+  # ansible.builtin.systemd:
+    # name: "{{ item.service }}"
+    # state: stopped
+    # enabled: false
+  # loop:
+    # - { group: "web",       service: "xout-web" }
+    # - { group: "portal",    service: "xout-portal" }
+    # - { group: "pmc",       service: "xout-pmc" }
+    # - { group: "activemq",  service: "xout-activemq-artemis" }
+    # - { group: "modeshape", service: "xout-modeshape" }
+  # when: item.group in group_names
+  # tags: xout_stop
+
+- name: Stop and disable XOUT services (group-based)
+  # become: yes
+  #become_user: root
+  ansible.builtin.shell: "sudo /usr/bin/systemctl stop {{ item.service }}"
+    # systemctl disable {{ item.service }}
+  loop:
+    - { group: "web",       service: "xout-web" }
+    - { group: "portal",    service: "xout-portal" }
+    - { group: "pmc",       service: "xout-pmc" }
+    - { group: "activemq",  service: "xout-activemq-artemis" }
+    - { group: "modeshape", service: "xout-modeshape" }
+  when: item.group in group_names
+  tags: xout_stop
+

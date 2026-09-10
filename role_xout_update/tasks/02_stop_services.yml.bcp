@@ -1,0 +1,124 @@
+# - name: Stop XOUT Systemd Services
+#   become: yes
+#   become_user: xout-adm
+#   systemd:
+#     name: "{{ item.service }}"
+#     state: stopped
+#   loop:
+#     - { service: xout-web.service, group: web }
+#     - { service: xout-portal.service, group: portal }
+#     - { service: xout-pmc.service, group: pmc }
+#     - { service: xout-activemq-artemis.service, group: activemq }
+#     - { service: xout-modeshape.service, group: modeshape }
+#   when: "item.group in group_names"
+#   tags: xout_stop
+
+#- name: Stop XOUT Web Systemd Service
+#  shell: sudo systemctl stop xout-web
+#  args:
+#    executable: /bin/bash
+#    # warn: false
+#  become: yes
+#  become_user: xout-adm
+#  when: "'web' in group_names"
+#  tags: xout_stop
+
+
+- name: Stop and Disable xout-web
+  systemd:
+    name: xout-web.service
+    state: stopped
+    enabled: false
+  become: yes
+  any_errors_fatal: true
+  when: "'web' in group_names"
+  tags: xout_stop_web
+
+
+
+
+- name: Stop XOUT Portal Systemd Service
+  shell: sudo systemctl stop xout-portal
+  args:
+    executable: /bin/bash
+    # warn: false
+  become: yes
+  become_user: xout-adm
+  when: "'portal' in group_names"
+  tags: xout_stop
+
+- name: Stop XOUT PMC Systemd Service
+  shell: sudo systemctl stop xout-pmc
+  args:
+    executable: /bin/bash
+    # warn: false
+  become: yes
+  become_user: xout-adm
+  when: "'pmc' in group_names"
+  tags: xout_stop
+
+- name: Stop XOUT AMQ Systemd Service
+  shell: sudo systemctl stop xout-activemq-artemis
+  args:
+    executable: /bin/bash
+    # warn: false
+  become: yes
+  become_user: xout-adm
+  when: "'activemq' in group_names"
+  tags: xout_stop
+
+- name: Stop XOUT ModeShape Systemd Service
+  shell: sudo systemctl stop xout-modeshape
+  args:
+    executable: /bin/bash
+    # warn: false
+  become: yes
+  become_user: xout-adm  
+  when: "'modeshape' in group_names"
+  tags: xout_stop
+
+
+# - name: Stop XOUT Web Systemd Service
+#   become: yes  # Necessary for managing systemd services
+#   become_user: xout-adm
+#   systemd:
+#     name: xout-web
+#     state: stopped
+#   when: "'web' in group_names"
+#   tags: xout_stop
+
+# - name: Stop XOUT Portal Systemd Service
+#   become: yes  # Necessary for managing systemd services
+#   become_user: xout-adm
+#   systemd:
+#     name: xout-portal
+#     state: stopped
+#   when: "'portal' in group_names"
+#   tags: xout_stop
+
+# - name: Stop XOUT PMC Systemd Service
+#   become: yes  # Necessary for managing systemd services
+#   become_user: xout-adm
+#   systemd:
+#     name: xout-pmc
+#     state: stopped
+#   when: "'pmc' in group_names"
+#   tags: xout_stop
+
+# - name: Stop XOUT AMQ Systemd Service
+#   become: yes  # Necessary for managing systemd services
+#   become_user: xout-adm
+#   systemd:
+#     name: xout-activemq-artemis
+#     state: stopped
+#   when: "'activemq' in group_names"
+#   tags: xout_stop
+
+# - name: Stop XOUT ModeShape Systemd Service
+#   become: yes  # Necessary for managing systemd services
+#   become_user: xout-adm
+#   systemd:
+#     name: xout-modeshape
+#     state: stopped
+#   when: "'modeshape' in group_names"
+#   tags: xout_stop

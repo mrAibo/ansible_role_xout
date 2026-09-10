@@ -1,0 +1,25 @@
+---
+#- include_tasks: 00_debug.yml
+- include_tasks: 01_stop_modules.yml
+  tags: 
+    - xout_stop
+    - pegasus_stop
+- include_tasks: 02_stop_services.yml
+  tags: 
+    - xout_stop
+    - xout_stop_web
+- include_tasks: 03_zypper_enable_refresh.yml
+  tags:
+    - zypper_refresh
+- include_tasks: 03_01_xout_udu.yml
+- include_tasks: 04_xout_update.yml
+- include_tasks: 05_zypper_disable.yml
+  tags:
+    - zypper_refresh
+- include_tasks: 06_start_services.yml
+  tags: xout_start
+- include_tasks: 07_start_modules.yml
+  tags: 
+    - xout_start
+    - pegasus_start
+

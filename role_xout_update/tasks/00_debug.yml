@@ -1,0 +1,15 @@
+---
+#- debug:
+#   var: INSTALLVERSION
+
+# - name: Install temurin-21 if not installed
+#   shell: | 
+#     if ! zypper search temurin --repo xout-repo | grep -q 'temurin-21-jdk'; then
+#       echo "temurin-21-jdk not found. Installing temurin-21-jdk"
+#       sudo zypper mr -e xout-repo 
+#       sudo zypper -n --no-gpg-checks install --download-as-needed -t package temurin-21-jdk 
+#       sudo update-alternatives --config java 
+#       sudo update-alternatives --config javac
+#     fi
+#   args:
+#    executable: /bin/bash
