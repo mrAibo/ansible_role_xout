@@ -1,0 +1,11 @@
+---
+- name: Ensure CUPS is running on Portal hosts
+  ansible.builtin.systemd_service:
+    name: cups.service
+    state: started
+  become: true
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_portal_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  when: xout_check_cups | bool
