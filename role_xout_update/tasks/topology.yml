@@ -1,0 +1,201 @@
+---
+- name: Resolve component host lists
+  ansible.builtin.set_fact:
+    xout_modeshape_hosts: "{{ groups.get('modeshape', []) | list }}"
+    xout_activemq_hosts: "{{ groups.get('activemq', []) | list }}"
+    xout_pmc_hosts: "{{ groups.get('pmc', []) | list }}"
+    xout_portal_hosts: "{{ groups.get('portal', []) | list }}"
+    xout_web_hosts: "{{ (groups.get('web', []) + groups.get('tobi', [])) | unique | list }}"
+    xout_batchsplitter_hosts: "{{ groups.get('batchsplitter', []) | list }}"
+    xout_oracle_hosts: "{{ groups.get('ora_db', []) | list }}"
+
+- name: Resolve all XOUT hosts
+  ansible.builtin.set_fact:
+    xout_target_hosts: >-
+      {{
+        (
+          xout_modeshape_hosts
+          + xout_activemq_hosts
+          + xout_pmc_hosts
+          + xout_portal_hosts
+          + xout_web_hosts
+          + xout_batchsplitter_hosts
+        ) | unique | list
+      }}
+
+- name: Require at least one XOUT host
+  ansible.builtin.assert:
+    that:
+      - xout_target_hosts | length > 0
+    fail_msg: No XOUT component hosts were found in the selected inventory.
+
+- name: Require Oracle host when Pegasus lifecycle is enabled
+  ansible.builtin.assert:
+    that:
+      - xout_oracle_hosts | length == 1
+    fail_msg: >-
+      Exactly one host in [ora_db] is required while xout_manage_pegasus=true;
+      found {{ xout_oracle_hosts | length }}.
+  when:
+    - xout_manage_pegasus | bool
+    - xout_action in ['install', 'update', 'start', 'stop', 'restart']
+
+- name: Create runtime ModeShape group
+  ansible.builtin.add_host:
+    name: "{{ item }}"
+    groups: xout_runtime_modeshape
+  loop: "{{ xout_modeshape_hosts }}"
+  changed_when: false
+
+- name: Create runtime ActiveMQ group
+  ansible.builtin.add_host:
+    name: "{{ item }}"
+    groups: xout_runtime_activemq
+  loop: "{{ xout_activemq_hosts }}"
+  changed_when: false
+
+- name: Create runtime PMC group
+  ansible.builtin.add_host:
+    name: "{{ item }}"
+    groups: xout_runtime_pmc
+  loop: "{{ xout_pmc_hosts }}"
+  changed_when: false
+
+- name: Create runtime Portal group
+  ansible.builtin.add_host:
+    name: "{{ item }}"
+    groups: xout_runtime_portal
+  loop: "{{ xout_portal_hosts }}"
+  changed_when: false
+
+- name: Create runtime Web group
+  ansible.builtin.add_host:
+    name: "{{ item }}"
+    groups: xout_runtime_web
+  loop: "{{ xout_web_hosts }}"
+  changed_when: false
+
+- name: Create runtime Batchsplitter group
+  ansible.builtin.add_host:
+    name: "{{ item }}"
+    groups: xout_runtime_batchsplitter
+  loop: "{{ xout_batchsplitter_hosts }}"
+  changed_when: false
+
+- name: Initialize ServiceFlow service list
+  ansible.builtin.set_fact:
+    xout_serviceflow_services: []
+
+- name: Add ModeShape lifecycle definition
+  ansible.builtin.set_fact:
+    xout_serviceflow_services: >-
+      {{ xout_serviceflow_services + [
+        {
+          'name': 'modeshape',
+          'unit': 'xout-modeshape.service',
+          'groups': ['xout_runtime_modeshape'],
+          'ready': {
+            'type': 'log',
+            'path': '/var/log/xout/modeshape/server.log',
+            'regex': 'Started ModeShapeServer in',
+            'timeout': xout_manager_max_wait | int,
+            'interval': 1
+          }
+        }
+      ] }}
+  when: xout_modeshape_hosts | length > 0
+
+- name: Add ActiveMQ lifecycle definition
+  ansible.builtin.set_fact:
+    xout_serviceflow_services: >-
+      {{ xout_serviceflow_services + [
+        {
+          'name': 'activemq',
+          'unit': 'xout-activemq-artemis.service',
+          'groups': ['xout_runtime_activemq'],
+          'ready': {'type': 'systemd', 'timeout': 60, 'interval': 2}
+        }
+      ] }}
+  when: xout_activemq_hosts | length > 0
+
+- name: Add PMC lifecycle definition
+  ansible.builtin.set_fact:
+    xout_serviceflow_services: >-
+      {{ xout_serviceflow_services + [
+        {
+          'name': 'pmc',
+          'unit': 'xout-pmc.service',
+          'groups': ['xout_runtime_pmc'],
+          'ready': {
+            'type': 'log',
+            'path': '/var/log/xout/pmc/server.log',
+            'regex': 'WFLYSRV0212: Resuming server',
+            'timeout': xout_manager_max_wait | int,
+            'interval': 1
+          }
+        }
+      ] }}
+  when: xout_pmc_hosts | length > 0
+
+- name: Add Portal lifecycle definition
+  ansible.builtin.set_fact:
+    xout_serviceflow_services: >-
+      {{ xout_serviceflow_services + [
+        {
+          'name': 'portal',
+          'unit': 'xout-portal.service',
+          'groups': ['xout_runtime_portal'],
+          'ready': {'type': 'systemd', 'timeout': 90, 'interval': 2}
+        }
+      ] }}
+  when: xout_portal_hosts | length > 0
+
+- name: Add Web lifecycle definition
+  ansible.builtin.set_fact:
+    xout_serviceflow_services: >-
+      {{ xout_serviceflow_services + [
+        {
+          'name': 'web',
+          'unit': 'xout-web.service',
+          'groups': ['xout_runtime_web'],
+          'ready': {'type': 'systemd', 'timeout': 60, 'interval': 2}
+        }
+      ] }}
+  when: xout_web_hosts | length > 0
+
+- name: Add Batchsplitter lifecycle definition
+  ansible.builtin.set_fact:
+    xout_serviceflow_services: >-
+      {{ xout_serviceflow_services + [
+        {
+          'name': 'batchsplitter',
+          'unit': 'xout-batchsplitter.service',
+          'groups': ['xout_runtime_batchsplitter'],
+          'ready': {'type': 'systemd', 'timeout': 60, 'interval': 2}
+        }
+      ] }}
+  when: xout_batchsplitter_hosts | length > 0
+
+- name: Initialize package placement map
+  ansible.builtin.set_fact:
+    xout_host_packages: {}
+
+- name: Resolve packages for every XOUT host
+  ansible.builtin.set_fact:
+    xout_host_packages: >-
+      {{
+        xout_host_packages | combine(
+          {
+            item:
+              (
+                (['modeshape'] if item in xout_modeshape_hosts else [])
+                + (['activemq'] if item in xout_activemq_hosts else [])
+                + (['pmc'] if item in xout_pmc_hosts else [])
+                + (['portal'] if item in xout_portal_hosts else [])
+                + (['web'] if item in xout_web_hosts else [])
+                + (['batchsplitter'] if item in xout_batchsplitter_hosts else [])
+              )
+          }
+        )
+      }}
+  loop: "{{ xout_target_hosts }}"
