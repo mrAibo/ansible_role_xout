@@ -1,0 +1,18 @@
+---
+xout_action: update
+xout_manager_path: /work/dms/rollout/xmanager.py
+xout_release_file: ""
+xout_allow_downgrade: false
+xout_show_plan: true
+xout_parallel_hosts: true
+xout_serviceflow_parallel_timeout: 300
+xout_serviceflow_become: true
+xout_manager_async_timeout: 900
+xout_manager_max_wait: 180
+xout_module_state_file: /var/tmp/xmanager-portal-modules.json
+xout_manage_pegasus: true
+xout_check_udu: true
+xout_udu_root: /software/Xout/01_Releases
+xout_udu_version: "{{ INSTALLVERSION | default('') }}"
+xout_check_cups: true
+xout_properties_file: /ansible/XOUT/install.properties
