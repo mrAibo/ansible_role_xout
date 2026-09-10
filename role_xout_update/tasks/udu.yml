@@ -1,0 +1,20 @@
+---
+- name: Check whether an UDU directory belongs to this delivery
+  ansible.builtin.stat:
+    path: "{{ xout_udu_root }}/Auslieferung_{{ xout_udu_version }}/{{ kasse }}/udu"
+  delegate_to: localhost
+  register: xout_udu_folder
+  when:
+    - xout_check_udu | bool
+    - xout_udu_version | string | length > 0
+
+- name: Wait for manual UDU installation confirmation
+  ansible.builtin.pause:
+    prompt: >-
+      UDU update found at
+      {{ xout_udu_root }}/Auslieferung_{{ xout_udu_version }}/{{ kasse }}/udu.
+      Install the UDU manually, then press Enter to continue.
+  when:
+    - xout_check_udu | bool
+    - xout_udu_version | string | length > 0
+    - xout_udu_folder.stat.exists | default(false)
