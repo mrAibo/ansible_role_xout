@@ -1,0 +1,75 @@
+---
+- name: Check for stale Portal module state files
+  ansible.builtin.stat:
+    path: "{{ xout_module_state_file }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_portal_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  register: xout_module_state_precheck
+
+- name: Refuse to overwrite unresolved Portal module state
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists
+    fail_msg: >-
+      Existing module state file on {{ item.item }}: {{ xout_module_state_file }}.
+      Restore/start the previous operation before starting a new stop/update.
+  loop: "{{ xout_module_state_precheck.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Launch Portal module quiesce on all Portal hosts
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_manager_path }}"
+      - --json
+      - --non-interactive
+      - "--max-wait={{ xout_manager_max_wait }}"
+      - modules-quiesce
+      - "--state-file={{ xout_module_state_file }}"
+  delegate_to: "{{ xout_module_host }}"
+  loop: "{{ xout_portal_hosts }}"
+  loop_control:
+    loop_var: xout_module_host
+    label: "{{ xout_module_host }}"
+  async: "{{ xout_manager_async_timeout }}"
+  poll: 0
+  changed_when: true
+  register: xout_module_quiesce_jobs
+
+- name: Wait for Portal module quiesce jobs
+  ansible.builtin.async_status:
+    jid: "{{ xout_module_job.ansible_job_id }}"
+  delegate_to: "{{ xout_module_job.xout_module_host }}"
+  loop: "{{ xout_module_quiesce_jobs.results }}"
+  loop_control:
+    loop_var: xout_module_job
+    label: "{{ xout_module_job.xout_module_host }}"
+  register: xout_module_quiesce_wait
+  until: xout_module_quiesce_wait.finished | bool
+  retries: "{{ ((xout_manager_async_timeout | int) / 2) | round(0, 'ceil') | int + 1 }}"
+  delay: 2
+  failed_when: false
+
+- name: Detect Portal module quiesce failure
+  ansible.builtin.set_fact:
+    xout_module_quiesce_failed: >-
+      {{
+        xout_module_quiesce_wait.results
+        | selectattr('rc', 'defined')
+        | rejectattr('rc', 'equalto', 0)
+        | list
+        | length > 0
+      }}
+
+- name: Restore already quiesced modules if quiesce failed
+  ansible.builtin.include_tasks: modules_restore.yml
+  when: xout_module_quiesce_failed | bool
+
+- name: Abort when Portal module quiesce was not clean
+  ansible.builtin.fail:
+    msg: >-
+      Portal module quiesce failed on at least one Portal host. Modules were
+      restored where possible; XOUT services were not stopped.
+  when: xout_module_quiesce_failed | bool
