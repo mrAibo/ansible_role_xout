@@ -1,0 +1,34 @@
+---
+- name: Validate requested action
+  ansible.builtin.assert:
+    that:
+      - xout_action in ['status', 'plan', 'install', 'update', 'start', 'stop', 'restart']
+    fail_msg: >-
+      Unsupported xout_action={{ xout_action }}. Allowed: status, plan, install,
+      update, start, stop, restart.
+
+- name: Verify ServiceFlow collection version is available
+  ansible.builtin.command:
+    argv:
+      - ansible-doc
+      - -t
+      - role
+      - mraibo.serviceflow.lifecycle
+  delegate_to: localhost
+  changed_when: false
+  when: xout_action in ['install', 'update', 'start', 'stop', 'restart']
+
+- name: Check optional release file on the controller
+  ansible.builtin.stat:
+    path: "{{ xout_release_file }}"
+  delegate_to: localhost
+  register: xout_release_file_stat
+  when: xout_release_file | length > 0
+
+- name: Require existing release file when one was requested
+  ansible.builtin.assert:
+    that:
+      - xout_release_file_stat.stat.exists
+      - xout_release_file_stat.stat.isreg
+    fail_msg: "Release file does not exist or is not a regular file: {{ xout_release_file }}"
+  when: xout_release_file | length > 0
