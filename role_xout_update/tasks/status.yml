@@ -1,0 +1,25 @@
+---
+- name: Read XOUT status from every host
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_manager_path }}"
+      - --json
+      - list
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_target_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_status_results
+
+- name: Display environment status
+  ansible.builtin.debug:
+    msg: |-
+      XOUT STATUS - {{ xout_environment | default('selected inventory') }}
+      {% for result in xout_status_results.results %}
+
+      {{ result.item }}
+      {% for service in result.stdout | from_json %}
+        {{ '%-27s' | format(service.name) }} {{ '%-10s' | format(service.active) }} enabled={{ service.enabled }} version={{ service.version }}
+      {% endfor %}
+      {% endfor %}
