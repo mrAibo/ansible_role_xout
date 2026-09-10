@@ -1,0 +1,14 @@
+---
+- name: Ensure XOUT services remain disabled for boot autostart
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_manager_path }}"
+      - --json
+      - --non-interactive
+      - ensure-disabled
+      - all
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_target_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
