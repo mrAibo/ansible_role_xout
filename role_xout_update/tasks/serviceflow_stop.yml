@@ -1,0 +1,11 @@
+---
+- name: Stop XOUT services in reverse dependency order
+  ansible.builtin.include_role:
+    name: mraibo.serviceflow.lifecycle
+  vars:
+    serviceflow_action: stop
+    serviceflow_services: "{{ xout_serviceflow_services }}"
+    serviceflow_parallel_hosts: "{{ xout_parallel_hosts | bool }}"
+    serviceflow_parallel_timeout: "{{ xout_serviceflow_parallel_timeout | int }}"
+    serviceflow_become: "{{ xout_serviceflow_become | bool }}"
+    serviceflow_show_plan: "{{ xout_show_plan | bool }}"
