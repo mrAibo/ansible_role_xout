@@ -12,6 +12,7 @@ xout_serviceflow_become: true
 xout_manager_async_timeout: 900
 xout_manager_max_wait: 180
 xout_module_state_file: /var/tmp/xmanager-portal-modules.json
+xout_postcheck_enabled: true
 xout_manage_pegasus: true
 xout_check_udu: true
 xout_udu_root: /software/Xout/01_Releases
