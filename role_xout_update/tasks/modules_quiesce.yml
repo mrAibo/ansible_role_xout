@@ -26,6 +26,7 @@
       - "{{ xout_manager_path }}"
       - --json
       - --non-interactive
+      - "--lock-file={{ xout_manager_lock_file }}"
       - "--max-wait={{ xout_manager_max_wait }}"
       - modules-quiesce
       - "--state-file={{ xout_module_state_file }}"
