@@ -1,0 +1,9 @@
+---
+- name: Discard transient Portal module state after successful standalone stop
+  ansible.builtin.file:
+    path: "{{ xout_module_state_file }}"
+    state: absent
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_portal_hosts }}"
+  loop_control:
+    label: "{{ item }}"
