@@ -6,6 +6,7 @@
       - "{{ xout_manager_path }}"
       - --json
       - --non-interactive
+      - "--lock-file={{ xout_manager_lock_file }}"
       - ensure-disabled
       - all
   delegate_to: "{{ item }}"
