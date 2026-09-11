@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-VERSION = "3.0.1"
+VERSION = "3.0.2"
 
 START_ORDER = [
     "xout-modeshape",
@@ -885,7 +885,7 @@ class XManager:
         requested = sorted(set(packages))
         combined: dict[str, list[PackageCandidate]] = {name: [] for name in requested}
         for package in requested:
-            cmd = ["zypper", "--xmlout", "--non-interactive", "--no-refresh", "search", "-s", "--match-exact", "-r", self.args.repo_alias, package]
+            cmd = ["zypper", "--xmlout", "--non-interactive", "--no-refresh", "--ignore-unknown", "search", "-s", "--match-exact", "-r", self.args.repo_alias, package]
             result = self.run(cmd, sudo=True, env=self.env_c(), check=True)
             parsed = parse_zypper_solvables(result.stdout, {package})
             combined[package].extend(parsed.get(package, []))
@@ -925,7 +925,10 @@ class XManager:
             requested_target = release_targets.get(package) if release_targets is not None else None
             if requested_target is None:
                 if not available:
-                    items.append(PackagePlanItem(package, PACKAGE_SERVICE_MAP.get(package, "-"), installed, None, "error", "package_not_found_in_repository", available))
+                    if installed is not None:
+                        items.append(PackagePlanItem(package, PACKAGE_SERVICE_MAP.get(package, "-"), installed, installed, "noop", "package_not_in_repository_keep_installed", available))
+                    else:
+                        items.append(PackagePlanItem(package, PACKAGE_SERVICE_MAP.get(package, "-"), installed, None, "error", "package_not_found_in_repository", available))
                     continue
                 target = available[0]
             else:
@@ -1158,7 +1161,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="xmanager.py",
         description="XOUT Manager: lokale Services, Portal-Module und RPM-Pakete verwalten; geeignet für Ansible-Automation.",
-        epilog="Target semantics: without --release-file, selected packages target the newest version in xout-repo. With --release-file, only packages listed in [packages] are changed; other selected packages are NOOP.",
+        epilog="Target semantics: without --release-file, selected packages target the newest version in xout-repo; already installed packages absent from the repository are kept unchanged. With --release-file, only packages listed in [packages] are changed; other selected packages are NOOP.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Jolokia host (default: {DEFAULT_HOST})")
