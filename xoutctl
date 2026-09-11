@@ -68,6 +68,14 @@ Typical workflow:
   # xoutctl automatically runs the preflight plan again and asks for confirmation.
   ./xoutctl NDS_PROD update
 
+  # Maintenance window: stop XOUT first, let other teams perform their work,
+  # then continue later with the XOUT update. A clean standalone stop does not
+  # retain Portal module restore state. update detects that XOUT is already DOWN
+  # and starts the environment again after package/UDU processing.
+  ./xoutctl NDS_PROD stop
+  # ... other maintenance work ...
+  ./xoutctl NDS_PROD update
+
   # Preview/update only the versions defined by a release file
   ./xoutctl NDS_PROD plan examples/Release_25.10.ini
   ./xoutctl NDS_PROD update examples/Release_25.10.ini
@@ -80,6 +88,9 @@ Typical workflow:
   ./xoutctl NDS_TEST start
   ./xoutctl NDS_TEST restart
 
+  # update/start/restart perform a final postcheck of XOUT services, boot policy,
+  # CUPS, Portal/Jolokia/module-state cleanup and Pegasus.
+
   # Skip the wrapper confirmation (internal UDU prompt is not bypassed)
   ./xoutctl NDS_TEST restart --yes
 
@@ -90,6 +101,7 @@ Examples:
   ./xoutctl
   ./xoutctl NDS_TEST status
   ./xoutctl NDS_TEST plan
+  ./xoutctl NDS_PROD stop
   ./xoutctl NDS_PROD update
   ./xoutctl NDS_PROD update examples/Release_25.10.ini
   ./xoutctl NDS_TEST stop
