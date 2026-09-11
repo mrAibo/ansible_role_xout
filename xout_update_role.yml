@@ -1,7 +1,6 @@
 ---
 - name: Orchestrate XOUT environment
   hosts: localhost
-  connection: local
   gather_facts: false
   roles:
     - role: role_xout_update
