@@ -15,7 +15,7 @@
 - name: Display environment status
   ansible.builtin.debug:
     msg: |-
-      XOUT STATUS - {{ xout_environment | default('selected inventory') }}
+      XOUT STATUS - {{ xout_effective_environment }}
       {% for result in xout_status_results.results %}
 
       {{ result.item }}

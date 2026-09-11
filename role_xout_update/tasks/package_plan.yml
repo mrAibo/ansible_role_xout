@@ -20,20 +20,6 @@
     label: "{{ item }}"
   when: xout_release_file | length > 0
 
-- name: Verify xmanager 3.x on every XOUT host
-  ansible.builtin.command:
-    argv:
-      - "{{ xout_manager_path }}"
-      - --version
-  delegate_to: "{{ item }}"
-  loop: "{{ xout_target_hosts }}"
-  loop_control:
-    label: "{{ item }}"
-  changed_when: false
-  register: xout_manager_versions
-  failed_when:
-    - xout_manager_versions.rc != 0 or 'xmanager.py 3.' not in xout_manager_versions.stdout
-
 - name: Launch package preflight on all XOUT hosts
   ansible.builtin.command:
     argv: >-
@@ -116,7 +102,7 @@
 - name: Display package and lifecycle plan
   ansible.builtin.debug:
     msg: |-
-      XOUT PLAN - {{ xout_environment | default('selected inventory') }}
+      XOUT PLAN - {{ xout_effective_environment }}
       Target mode: {{ 'release file ' ~ xout_release_file if xout_release_file | length > 0 else 'latest from repository' }}
       Downgrade allowed: {{ xout_allow_downgrade | bool }}
 
