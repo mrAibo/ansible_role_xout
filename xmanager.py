@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-VERSION = "3.0.0"
+VERSION = "3.0.1"
 
 START_ORDER = [
     "xout-modeshape",
@@ -431,7 +431,10 @@ class XManager:
             prefix = ["sudo"] + (["-n"] if self.args.non_interactive else [])
             full_cmd = [*prefix, "-u", as_user, *full_cmd]
         elif sudo and self.sudo_prefix:
-            full_cmd = [*self.sudo_prefix, *full_cmd]
+            prefix = [*self.sudo_prefix]
+            if self.args.non_interactive:
+                prefix.append("-n")
+            full_cmd = [*prefix, *full_cmd]
         if self.args.verbose or (self.args.dry_run and dry_run_changes):
             self.log("CMD", " ".join(shlex_quote(value) for value in full_cmd))
         if self.args.dry_run and dry_run_changes:
@@ -465,8 +468,6 @@ class XManager:
         if not required or os.geteuid() == 0:
             return
         if self.args.non_interactive:
-            if self.run(["sudo", "-n", "true"]).rc != 0:
-                self.die("sudo ohne Passwort ist nicht möglich.", EXIT_PRECHECK)
             return
         self.log("INFO", "sudo-Berechtigung wird geprüft. Falls nötig, bitte Passwort eingeben.")
         if self.run(["sudo", "-v"], capture=False).rc != 0:
