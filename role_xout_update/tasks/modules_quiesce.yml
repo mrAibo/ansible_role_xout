@@ -22,6 +22,7 @@
 - name: Launch Portal module quiesce on all Portal hosts
   ansible.builtin.command:
     argv:
+      - "{{ xout_python_path }}"
       - "{{ xout_manager_path }}"
       - --json
       - --non-interactive
