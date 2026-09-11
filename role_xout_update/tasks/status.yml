@@ -2,6 +2,7 @@
 - name: Read XOUT status from every host
   ansible.builtin.command:
     argv:
+      - "{{ xout_python_path }}"
       - "{{ xout_manager_path }}"
       - --json
       - list
