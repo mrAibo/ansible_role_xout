@@ -1,5 +1,6 @@
 ---
 xout_action: update
+xout_python_path: /usr/bin/python3.12
 xout_manager_path: /work/dms/rollout/xmanager.py
 xout_release_file: ""
 xout_allow_downgrade: false
