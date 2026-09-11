@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "xmanager.py"
 spec = importlib.util.spec_from_file_location("xmanager", MODULE_PATH)
@@ -110,6 +111,27 @@ class XManagerTests(unittest.TestCase):
             allowed = Dummy().build_package_plan(["xout-web"], release, True)
         self.assertEqual(blocked["packages"][0]["action"], "error")
         self.assertEqual(allowed["packages"][0]["action"], "downgrade")
+
+    def test_non_interactive_sudo_is_command_scoped(self):
+        args = mod.build_parser().parse_args(["--non-interactive", "list"])
+        with patch.object(mod.os, "geteuid", return_value=1000):
+            manager = mod.XManager(args)
+
+            completed = type(
+                "Completed",
+                (),
+                {"returncode": 0, "stdout": "", "stderr": ""},
+            )()
+            with patch.object(mod.subprocess, "run", return_value=completed) as run_mock:
+                manager.run(["zypper", "--version"], sudo=True)
+            self.assertEqual(
+                run_mock.call_args.args[0],
+                ["sudo", "-n", "zypper", "--version"],
+            )
+
+            with patch.object(manager, "run") as run_mock:
+                manager.ensure_sudo()
+            run_mock.assert_not_called()
 
     def test_help_contains_new_commands(self):
         parser = mod.build_parser()
