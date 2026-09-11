@@ -11,6 +11,7 @@
 - name: Wait until Portal Jolokia is available where state must be restored
   ansible.builtin.command:
     argv:
+      - "{{ xout_python_path }}"
       - "{{ xout_manager_path }}"
       - --json
       - modules
@@ -28,6 +29,7 @@
 - name: Restore Portal modules and remove state file on success
   ansible.builtin.command:
     argv:
+      - "{{ xout_python_path }}"
       - "{{ xout_manager_path }}"
       - --json
       - --non-interactive
