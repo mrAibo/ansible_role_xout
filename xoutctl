@@ -20,6 +20,11 @@ Usage:
   ./xoutctl
   ./xoutctl ENV ACTION [RELEASE_FILE] [--allow-downgrade] [--yes]
 
+Interactive mode:
+  Run ./xoutctl without arguments. One or more environments can be selected,
+  followed by one action. Selected environments are processed sequentially and
+  the workflow stops immediately if one environment fails.
+
 ENV:
   HB_TEST | HB_MIGRATION | HB_PRODUKTION
   NDS_TEST | NDS_MIGRATION | NDS_PRODUKTION
@@ -50,6 +55,9 @@ Release file example: examples/Release_25.10.ini
   # batchsplitter omitted -> keep installed version
 
 Typical workflow:
+  # Interactive multi-environment operation
+  ./xoutctl
+
   # Inspect current state
   ./xoutctl NDS_PROD status
 
@@ -79,6 +87,7 @@ Typical workflow:
   ./xoutctl NDS_TEST update examples/Release_25.10.ini --allow-downgrade
 
 Examples:
+  ./xoutctl
   ./xoutctl NDS_TEST status
   ./xoutctl NDS_TEST plan
   ./xoutctl NDS_PROD update
@@ -101,16 +110,57 @@ canonical_env() {
   esac
 }
 
-choose_environment() {
+choose_environments() {
   local options=(HB_TEST HB_MIGRATION HB_PRODUKTION NDS_TEST NDS_MIGRATION NDS_PRODUKTION)
-  echo "Environment:" >&2
-  select choice in "${options[@]}" "Cancel"; do
-    if [[ "$choice" == "Cancel" ]]; then
-      exit 0
-    elif [[ -n "$choice" ]]; then
-      printf '%s\n' "$choice"
-      return
+  local raw token candidate
+  local -a selected=()
+  local -A seen=()
+  local valid
+  local i
+
+  while true; do
+    echo "Environments:" >&2
+    for i in "${!options[@]}"; do
+      printf '  %d) %s\n' "$((i + 1))" "${options[$i]}" >&2
+    done
+    echo "  a) ALL" >&2
+    echo "  q) Cancel" >&2
+    printf 'Select one or more (for example 1,4,5): ' >&2
+    read -r raw
+
+    case "${raw,,}" in
+      q|quit|cancel)
+        return 0
+        ;;
+      a|all)
+        printf '%s\n' "${options[@]}"
+        return 0
+        ;;
+    esac
+
+    raw="${raw//,/ }"
+    selected=()
+    seen=()
+    valid=true
+    for token in $raw; do
+      if [[ ! "$token" =~ ^[1-6]$ ]]; then
+        valid=false
+        break
+      fi
+      candidate="${options[$((token - 1))]}"
+      if [[ -z "${seen[$candidate]+x}" ]]; then
+        selected+=("$candidate")
+        seen["$candidate"]=1
+      fi
+    done
+
+    if [[ "$valid" == true && ${#selected[@]} -gt 0 ]]; then
+      printf '%s\n' "${selected[@]}"
+      return 0
     fi
+
+    echo "Invalid selection. Use numbers 1-6 separated by comma/space, 'a', or 'q'." >&2
+    echo >&2
   done
 }
 
@@ -125,6 +175,15 @@ choose_action() {
       return
     fi
   done
+}
+
+set_environment() {
+  ENVIRONMENT=$1
+  INVENTORY="$SCRIPT_DIR/${INVENTORIES[$ENVIRONMENT]}"
+  [[ -f "$INVENTORY" ]] || {
+    echo "Inventory not found: $INVENTORY" >&2
+    exit 2
+  }
 }
 
 run_playbook() {
@@ -149,6 +208,20 @@ run_playbook() {
   "${cmd[@]}"
 }
 
+run_for_environments() {
+  local action=$1
+  local env
+  for env in "${ENVIRONMENTS[@]}"; do
+    set_environment "$env"
+    echo
+    echo "================================================================"
+    echo "XOUT $action - $ENVIRONMENT"
+    echo "Inventory: $(basename "$INVENTORY")"
+    echo "================================================================"
+    run_playbook "$action"
+  done
+}
+
 confirm() {
   local prompt=$1
   if [[ "$ASSUME_YES" == true ]]; then
@@ -159,14 +232,30 @@ confirm() {
   [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
 }
 
+print_summary() {
+  local env
+  echo
+  echo "XOUT Manager"
+  echo "  Action       : $ACTION"
+  echo "  Environments:"
+  for env in "${ENVIRONMENTS[@]}"; do
+    printf '    - %s (%s)\n' "$env" "${INVENTORIES[$env]}"
+  done
+  echo "  Target       : ${RELEASE_FILE:-latest versions from repository}"
+  echo "  Downgrade    : $ALLOW_DOWNGRADE"
+}
+
 ENVIRONMENT=""
+INVENTORY=""
 ACTION=""
 RELEASE_FILE=""
 ALLOW_DOWNGRADE=false
 ASSUME_YES=false
+declare -a ENVIRONMENTS=()
 
 if [[ $# -eq 0 ]]; then
-  ENVIRONMENT="$(choose_environment)"
+  mapfile -t ENVIRONMENTS < <(choose_environments)
+  [[ ${#ENVIRONMENTS[@]} -gt 0 ]] || exit 0
   ACTION="$(choose_action)"
   if [[ "$ACTION" == "plan" || "$ACTION" == "install" || "$ACTION" == "update" ]]; then
     read -r -p "Release file (empty = latest): " RELEASE_FILE
@@ -183,10 +272,12 @@ else
     usage >&2
     exit 2
   fi
-  ENVIRONMENT="$(canonical_env "$1")" || {
+
+  environment="$(canonical_env "$1")" || {
     echo "Unknown environment: $1" >&2
     exit 2
   }
+  ENVIRONMENTS=("$environment")
   ACTION="${2,,}"
   shift 2
 
@@ -206,25 +297,27 @@ else
   done
 fi
 
-ENVIRONMENT="$(canonical_env "$ENVIRONMENT")" || {
-  echo "Unknown environment: $ENVIRONMENT" >&2
-  exit 2
-}
-
 case "$ACTION" in
   status|plan|install|update|start|stop|restart) ;;
   *) echo "Unknown action: $ACTION" >&2; exit 2 ;;
 esac
 
-INVENTORY="$SCRIPT_DIR/${INVENTORIES[$ENVIRONMENT]}"
-[[ -f "$INVENTORY" ]] || {
-  echo "Inventory not found: $INVENTORY" >&2
-  exit 2
-}
 [[ -f "$PLAYBOOK" ]] || {
   echo "Playbook not found: $PLAYBOOK" >&2
   exit 2
 }
+
+for environment in "${ENVIRONMENTS[@]}"; do
+  [[ -n "${INVENTORIES[$environment]+x}" ]] || {
+    echo "Unknown environment: $environment" >&2
+    exit 2
+  }
+  inventory="$SCRIPT_DIR/${INVENTORIES[$environment]}"
+  [[ -f "$inventory" ]] || {
+    echo "Inventory not found: $inventory" >&2
+    exit 2
+  }
+done
 
 if [[ -n "$RELEASE_FILE" ]]; then
   if [[ "$RELEASE_FILE" != /* ]]; then
@@ -236,27 +329,21 @@ if [[ -n "$RELEASE_FILE" ]]; then
   }
 fi
 
-echo
-echo "XOUT Manager"
-echo "  Environment : $ENVIRONMENT"
-echo "  Inventory   : $(basename "$INVENTORY")"
-echo "  Action      : $ACTION"
-echo "  Target      : ${RELEASE_FILE:-latest versions from repository}"
-echo "  Downgrade   : $ALLOW_DOWNGRADE"
+print_summary
 
 if [[ "$ACTION" == "update" || "$ACTION" == "install" ]]; then
   echo
-  echo "Preflight plan:"
-  run_playbook plan
-  confirm "Proceed with $ACTION on $ENVIRONMENT?" || {
+  echo "Preflight plan for all selected environments:"
+  run_for_environments plan
+  confirm "Proceed with $ACTION on ${#ENVIRONMENTS[@]} environment(s)?" || {
     echo "Cancelled."
     exit 0
   }
 elif [[ "$ACTION" == "start" || "$ACTION" == "stop" || "$ACTION" == "restart" ]]; then
-  confirm "Proceed with $ACTION on $ENVIRONMENT?" || {
+  confirm "Proceed with $ACTION on ${#ENVIRONMENTS[@]} environment(s)?" || {
     echo "Cancelled."
     exit 0
   }
 fi
 
-run_playbook "$ACTION"
+run_for_environments "$ACTION"
