@@ -46,15 +46,17 @@ jobs:
           ansible-galaxy collection install \
             "git+https://github.com/mrAibo/ansible_serviceflow.git,main" \
             -p collections --force
-      - name: Validate wrapper syntax and interactive selection
+      - name: Validate wrapper syntax and interactive multi-selection
         shell: bash
         run: |
           set -euo pipefail
           bash -n xoutctl
           ./xoutctl --help >/dev/null
-          printf '4\n1\n' | ANSIBLE_PLAYBOOK=/bin/true ./xoutctl >/tmp/xoutctl-menu.txt
-          grep -q 'Environment : NDS_TEST' /tmp/xoutctl-menu.txt
-          grep -q 'Action      : status' /tmp/xoutctl-menu.txt
+          printf '1,4,5\n1\n' | ANSIBLE_PLAYBOOK=/bin/true ./xoutctl >/tmp/xoutctl-menu.txt
+          grep -q -- '- HB_TEST (HB_TEST_XOUT.ini)' /tmp/xoutctl-menu.txt
+          grep -q -- '- NDS_TEST (NDS_TEST_XOUT.ini)' /tmp/xoutctl-menu.txt
+          grep -q -- '- NDS_MIGRATION (NDS_MIG_XOUT.ini)' /tmp/xoutctl-menu.txt
+          grep -q 'Action       : status' /tmp/xoutctl-menu.txt
       - name: Validate inventories and playbook syntax
         shell: bash
         run: |
