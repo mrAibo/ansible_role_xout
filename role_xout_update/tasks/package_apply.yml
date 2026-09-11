@@ -14,7 +14,7 @@
             ]
             + (
                 xout_host_packages[xout_apply_host]
-                | map('regex_replace', '^(.*)$', '--package=\\1')
+                | map('regex_replace', '^', '--package=')
                 | list
               )
             + ['--release-file=/var/tmp/xout-execution-' ~ xout_run_id ~ '.ini']
