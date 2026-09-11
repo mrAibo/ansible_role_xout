@@ -1,0 +1,32 @@
+---
+- name: Verify {{ xout_postcheck_group.name }} is active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ xout_postcheck_group.unit }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_postcheck_group.hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_postcheck_active
+  failed_when: >-
+    xout_postcheck_active.rc != 0
+    or xout_postcheck_active.stdout | trim != 'active'
+
+- name: Verify {{ xout_postcheck_group.name }} is not enabled at boot
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ xout_postcheck_group.unit }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_postcheck_group.hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_postcheck_enabled
+  failed_when: >-
+    (xout_postcheck_enabled.stdout | trim) in ['enabled', 'enabled-runtime']
+    or (xout_postcheck_enabled.stdout | trim) == ''
