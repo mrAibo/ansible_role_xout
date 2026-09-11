@@ -1,0 +1,123 @@
+---
+- name: Build XOUT postcheck service groups
+  ansible.builtin.set_fact:
+    xout_postcheck_groups:
+      - name: modeshape
+        unit: xout-modeshape.service
+        hosts: "{{ xout_modeshape_hosts }}"
+      - name: activemq
+        unit: xout-activemq-artemis.service
+        hosts: "{{ xout_activemq_hosts }}"
+      - name: pmc
+        unit: xout-pmc.service
+        hosts: "{{ xout_pmc_hosts }}"
+      - name: portal
+        unit: xout-portal.service
+        hosts: "{{ xout_portal_hosts }}"
+      - name: web
+        unit: xout-web.service
+        hosts: "{{ xout_web_hosts }}"
+      - name: batchsplitter
+        unit: xout-batchsplitter.service
+        hosts: "{{ xout_batchsplitter_hosts }}"
+
+- name: Verify XOUT service runtime and boot policy
+  ansible.builtin.include_tasks: postcheck_unit_group.yml
+  loop: "{{ xout_postcheck_groups }}"
+  loop_control:
+    loop_var: xout_postcheck_group
+    label: "{{ xout_postcheck_group.name }}"
+
+- name: Verify CUPS is active on Portal hosts
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - cups.service
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_portal_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_postcheck_cups
+  failed_when: >-
+    xout_postcheck_cups.rc != 0
+    or xout_postcheck_cups.stdout | trim != 'active'
+  when: xout_check_cups | bool
+
+- name: Check for unresolved Portal module state files
+  ansible.builtin.stat:
+    path: "{{ xout_module_state_file }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_portal_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  register: xout_postcheck_module_state
+
+- name: Assert Portal module restore state is clean
+  ansible.builtin.assert:
+    that:
+      - not item.stat.exists
+    fail_msg: >-
+      Portal module state was not cleaned on {{ item.item }}:
+      {{ xout_module_state_file }}
+  loop: "{{ xout_postcheck_module_state.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Read final Portal module status
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_python_path }}"
+      - "{{ xout_manager_path }}"
+      - --json
+      - modules
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_portal_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_postcheck_modules
+
+- name: Display final Portal module summary
+  ansible.builtin.debug:
+    msg: |-
+      Portal modules - {{ item.item }}
+        total:       {{ item.stdout | from_json | length }}
+        RUNNING:     {{ item.stdout | from_json | selectattr('state', 'equalto', 'RUNNING') | list | length }}
+        non-RUNNING: {{ item.stdout | from_json | rejectattr('state', 'equalto', 'RUNNING') | list | to_json }}
+  loop: "{{ xout_postcheck_modules.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Verify Pegasus plugins are active
+  ansible.builtin.shell: |
+    set -o pipefail
+    result="$({{ hostvars[xout_oracle_hosts[0]].sql_plus }} -S \
+      {{ hostvars[xout_oracle_hosts[0]].oracle_user }}/{{ hostvars[xout_oracle_hosts[0]].oracle_pass }}@{{ hostvars[xout_oracle_hosts[0]].oracle_sid }} <<'SQL'
+    WHENEVER SQLERROR EXIT SQL.SQLCODE
+    SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+    SELECT COUNT(*)
+      FROM pegasus_plugins
+     WHERE TYPE=4
+       AND active<>1;
+    EXIT;
+    SQL
+    )"
+    test "$(printf '%s' "$result" | tr -d '[:space:]')" = "0"
+  args:
+    executable: /bin/bash
+  environment:
+    ORACLE_HOME: "{{ hostvars[xout_oracle_hosts[0]].oracle_home }}"
+    ORACLE_SID: "{{ hostvars[xout_oracle_hosts[0]].oracle_sid }}"
+  delegate_to: "{{ xout_oracle_hosts[0] }}"
+  changed_when: false
+  no_log: true
+  when: xout_manage_pegasus | bool
+
+- name: Report successful XOUT postcheck
+  ansible.builtin.debug:
+    msg: >-
+      XOUT postcheck passed: expected services are active, boot policy is not
+      enabled, CUPS is healthy, Portal module state is clean, Jolokia is
+      reachable, and Pegasus is active.
