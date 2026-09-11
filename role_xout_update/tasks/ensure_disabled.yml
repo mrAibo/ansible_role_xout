@@ -2,6 +2,7 @@
 - name: Ensure XOUT services remain disabled for boot autostart
   ansible.builtin.command:
     argv:
+      - "{{ xout_python_path }}"
       - "{{ xout_manager_path }}"
       - --json
       - --non-interactive
