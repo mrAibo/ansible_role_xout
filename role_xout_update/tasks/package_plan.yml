@@ -25,6 +25,7 @@
     argv: >-
       {{
         [
+          xout_python_path,
           xout_manager_path,
           '--json',
           '--non-interactive',
