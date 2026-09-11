@@ -1,0 +1,14 @@
+---
+- name: Check optional XOUT installation properties
+  ansible.builtin.stat:
+    path: "{{ xout_properties_file }}"
+  delegate_to: localhost
+  register: xout_properties_stat
+  when: xout_properties_file | length > 0
+
+- name: Load XOUT installation properties
+  ansible.builtin.include_vars:
+    file: "{{ xout_properties_file }}"
+  when:
+    - xout_properties_file | length > 0
+    - xout_properties_stat.stat.exists | default(false)

@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PLAYBOOK="${XOUT_PLAYBOOK:-$SCRIPT_DIR/xout_update_role.yml}"
+ANSIBLE_PLAYBOOK="${ANSIBLE_PLAYBOOK:-ansible-playbook}"
+
+declare -A INVENTORIES=(
+  [HB_TEST]="HB_TEST_XOUT.ini"
+  [HB_MIGRATION]="HB_MIG_XOUT.ini"
+  [HB_PRODUKTION]="HB_PROD_XOUT.ini"
+  [NDS_TEST]="NDS_TEST_XOUT.ini"
+  [NDS_MIGRATION]="NDS_MIG_XOUT.ini"
+  [NDS_PRODUKTION]="NDS_PROD_XOUT.ini"
+)
+
+usage() {
+  cat <<'EOF'
+Usage:
+  ./xoutctl
+  ./xoutctl ENV ACTION [RELEASE_FILE] [--allow-downgrade] [--yes]
+
+ENV:
+  HB_TEST | HB_MIGRATION | HB_PRODUKTION
+  NDS_TEST | NDS_MIGRATION | NDS_PRODUKTION
+  Short aliases HB_MIG/HB_PROD/NDS_MIG/NDS_PROD are accepted.
+
+ACTION:
+  status | plan | install | update | start | stop | restart
+
+Version selection:
+  Without RELEASE_FILE, install/update/plan target the newest repository version
+  of every component assigned to each host.
+  With RELEASE_FILE, only packages listed in [packages] are changed.
+
+Examples:
+  ./xoutctl NDS_TEST status
+  ./xoutctl NDS_TEST plan
+  ./xoutctl NDS_TEST update
+  ./xoutctl NDS_TEST update examples/Release_25.10.ini
+  ./xoutctl HB_PROD restart
+EOF
+}
+
+canonical_env() {
+  case "${1^^}" in
+    HB_TEST) echo HB_TEST ;;
+    HB_MIG|HB_MIGRATION) echo HB_MIGRATION ;;
+    HB_PROD|HB_PRODUKTION|HB_PRODUCTION) echo HB_PRODUKTION ;;
+    NDS_TEST) echo NDS_TEST ;;
+    NDS_MIG|NDS_MIGRATION) echo NDS_MIGRATION ;;
+    NDS_PROD|NDS_PRODUKTION|NDS_PRODUCTION) echo NDS_PRODUKTION ;;
+    *) return 1 ;;
+  esac
+}
+
+choose_environment() {
+  local options=(HB_TEST HB_MIGRATION HB_PRODUKTION NDS_TEST NDS_MIGRATION NDS_PRODUKTION)
+  echo "Environment:"
+  select choice in "${options[@]}" "Cancel"; do
+    if [[ "$choice" == "Cancel" ]]; then
+      exit 0
+    elif [[ -n "$choice" ]]; then
+      printf '%s\n' "$choice"
+      return
+    fi
+  done
+}
+
+choose_action() {
+  local options=(status plan update install start stop restart)
+  echo "Action:"
+  select choice in "${options[@]}" "Cancel"; do
+    if [[ "$choice" == "Cancel" ]]; then
+      exit 0
+    elif [[ -n "$choice" ]]; then
+      printf '%s\n' "$choice"
+      return
+    fi
+  done
+}
+
+run_playbook() {
+  local action=$1
+  local -a extra_vars=("xout_action=$action" "xout_environment=$ENVIRONMENT")
+  if [[ -n "$RELEASE_FILE" ]]; then
+    extra_vars+=("xout_release_file=$RELEASE_FILE")
+  fi
+  if [[ "$ALLOW_DOWNGRADE" == true ]]; then
+    extra_vars+=("xout_allow_downgrade=true")
+  fi
+
+  local -a cmd=("$ANSIBLE_PLAYBOOK" -i "$INVENTORY" "$PLAYBOOK")
+  local item
+  for item in "${extra_vars[@]}"; do
+    cmd+=(-e "$item")
+  done
+
+  printf '\nCommand:\n  '
+  printf '%q ' "${cmd[@]}"
+  printf '\n\n'
+  "${cmd[@]}"
+}
+
+confirm() {
+  local prompt=$1
+  if [[ "$ASSUME_YES" == true ]]; then
+    return 0
+  fi
+  local answer
+  read -r -p "$prompt [y/N] " answer
+  [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
+ENVIRONMENT=""
+ACTION=""
+RELEASE_FILE=""
+ALLOW_DOWNGRADE=false
+ASSUME_YES=false
+
+if [[ $# -eq 0 ]]; then
+  ENVIRONMENT="$(choose_environment)"
+  ACTION="$(choose_action)"
+  if [[ "$ACTION" == "plan" || "$ACTION" == "install" || "$ACTION" == "update" ]]; then
+    read -r -p "Release file (empty = latest): " RELEASE_FILE
+  fi
+else
+  case "${1:-}" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+  esac
+
+  if [[ $# -lt 2 ]]; then
+    usage >&2
+    exit 2
+  fi
+  ENVIRONMENT="$(canonical_env "$1")" || {
+    echo "Unknown environment: $1" >&2
+    exit 2
+  }
+  ACTION="${2,,}"
+  shift 2
+
+  if [[ $# -gt 0 && "${1:-}" != --* ]]; then
+    RELEASE_FILE=$1
+    shift
+  fi
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --allow-downgrade) ALLOW_DOWNGRADE=true ;;
+      -y|--yes) ASSUME_YES=true ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+  done
+fi
+
+ENVIRONMENT="$(canonical_env "$ENVIRONMENT")" || {
+  echo "Unknown environment: $ENVIRONMENT" >&2
+  exit 2
+}
+
+case "$ACTION" in
+  status|plan|install|update|start|stop|restart) ;;
+  *) echo "Unknown action: $ACTION" >&2; exit 2 ;;
+esac
+
+INVENTORY="$SCRIPT_DIR/${INVENTORIES[$ENVIRONMENT]}"
+[[ -f "$INVENTORY" ]] || {
+  echo "Inventory not found: $INVENTORY" >&2
+  exit 2
+}
+[[ -f "$PLAYBOOK" ]] || {
+  echo "Playbook not found: $PLAYBOOK" >&2
+  exit 2
+}
+
+if [[ -n "$RELEASE_FILE" ]]; then
+  if [[ "$RELEASE_FILE" != /* ]]; then
+    RELEASE_FILE="$(cd -- "$(dirname -- "$RELEASE_FILE")" && pwd)/$(basename -- "$RELEASE_FILE")"
+  fi
+  [[ -f "$RELEASE_FILE" ]] || {
+    echo "Release file not found: $RELEASE_FILE" >&2
+    exit 2
+  }
+fi
+
+echo
+echo "XOUT Manager"
+echo "  Environment : $ENVIRONMENT"
+echo "  Inventory   : $(basename "$INVENTORY")"
+echo "  Action      : $ACTION"
+echo "  Target      : ${RELEASE_FILE:-latest versions from repository}"
+echo "  Downgrade   : $ALLOW_DOWNGRADE"
+
+if [[ "$ACTION" == "update" || "$ACTION" == "install" ]]; then
+  echo
+  echo "Preflight plan:"
+  run_playbook plan
+  confirm "Proceed with $ACTION on $ENVIRONMENT?" || {
+    echo "Cancelled."
+    exit 0
+  }
+elif [[ "$ACTION" == "stop" || "$ACTION" == "restart" ]]; then
+  confirm "Proceed with $ACTION on $ENVIRONMENT?" || {
+    echo "Cancelled."
+    exit 0
+  }
+fi
+
+run_playbook "$ACTION"

@@ -1,0 +1,14 @@
+---
+- name: Verify xmanager 3.x on every XOUT host
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_manager_path }}"
+      - --version
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_target_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_manager_version_results
+  failed_when:
+    - xout_manager_version_results.rc != 0 or 'xmanager.py 3.' not in xout_manager_version_results.stdout

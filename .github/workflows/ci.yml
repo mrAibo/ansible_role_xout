@@ -26,3 +26,48 @@ jobs:
           python xmanager.py --help >/dev/null
           python xmanager.py package-plan --help >/dev/null
           python xmanager.py package-apply --help >/dev/null
+          python xmanager.py modules-quiesce --help >/dev/null
+          python xmanager.py modules-restore --help >/dev/null
+
+  ansible:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ansible-core
+        run: python -m pip install --disable-pip-version-check -q "ansible-core>=2.15,<2.20"
+      - name: Install ServiceFlow from tested main branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p collections
+          ansible-galaxy collection install \
+            "git+https://github.com/mrAibo/ansible_serviceflow.git,main" \
+            -p collections --force
+      - name: Validate wrapper
+        run: |
+          bash -n xoutctl
+          ./xoutctl --help >/dev/null
+      - name: Validate inventories and playbook syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANSIBLE_COLLECTIONS_PATH="$PWD/collections"
+          export ANSIBLE_ROLES_PATH="$PWD"
+          for inventory in \
+            HB_TEST_XOUT.ini \
+            HB_MIG_XOUT.ini \
+            HB_PROD_XOUT.ini \
+            NDS_TEST_XOUT.ini \
+            NDS_MIG_XOUT.ini \
+            NDS_PROD_XOUT.ini; do
+            echo "== $inventory =="
+            ansible-inventory -i "$inventory" --list >/dev/null
+            ansible-playbook \
+              --syntax-check \
+              -i "$inventory" \
+              xout_update_role.yml \
+              -e xout_properties_file=
+          done

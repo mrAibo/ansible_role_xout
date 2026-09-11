@@ -1,0 +1,4 @@
+---
+collections:
+  - name: mraibo.serviceflow
+    version: "0.3.0"

@@ -1,25 +1,222 @@
 ---
-#- include_tasks: 00_debug.yml
-- include_tasks: 01_stop_modules.yml
-  tags: 
-    - xout_stop
-    - pegasus_stop
-- include_tasks: 02_stop_services.yml
-  tags: 
-    - xout_stop
-    - xout_stop_web
-- include_tasks: 03_zypper_enable_refresh.yml
-  tags:
-    - zypper_refresh
-- include_tasks: 03_01_xout_udu.yml
-- include_tasks: 04_xout_update.yml
-- include_tasks: 05_zypper_disable.yml
-  tags:
-    - zypper_refresh
-- include_tasks: 06_start_services.yml
-  tags: xout_start
-- include_tasks: 07_start_modules.yml
-  tags: 
-    - xout_start
-    - pegasus_start
+- name: Load optional XOUT installation properties
+  ansible.builtin.include_tasks: properties.yml
 
+- name: Validate XOUT orchestration request
+  ansible.builtin.include_tasks: validate.yml
+
+- name: Build XOUT inventory topology
+  ansible.builtin.include_tasks: topology.yml
+
+- name: Resolve environment metadata from inventory
+  ansible.builtin.set_fact:
+    xout_effective_environment: >-
+      {{
+        xout_environment
+        | default(hostvars[xout_target_hosts[0]].xout_environment | default('selected inventory'))
+      }}
+    xout_effective_kasse: >-
+      {{
+        kasse
+        | default(hostvars[xout_target_hosts[0]].kasse | default(''))
+      }}
+
+- name: Verify xmanager execution layer
+  ansible.builtin.include_tasks: verify_xmanager.yml
+
+- name: Detect optional UDU delivery
+  ansible.builtin.include_tasks: udu_check.yml
+  when: xout_action in ['plan', 'install', 'update']
+
+- name: Show UDU planning result
+  ansible.builtin.debug:
+    msg: >-
+      UDU: {{ 'manual installation required' if xout_udu_required | bool else 'not present for this delivery' }}
+  when:
+    - xout_action in ['plan', 'install', 'update']
+    - xout_show_plan | bool
+
+- name: Show XOUT environment status
+  ansible.builtin.include_tasks: status.yml
+  when: xout_action == 'status'
+
+- name: Build XOUT package plan
+  ansible.builtin.include_tasks: package_plan.yml
+  when: xout_action in ['plan', 'install', 'update']
+
+- name: Reject missing packages in update mode
+  ansible.builtin.include_tasks: update_precheck.yml
+  when: xout_action == 'update'
+
+- name: Validate install precondition
+  ansible.builtin.include_tasks: install_precheck.yml
+  when: xout_action == 'install'
+
+- name: Calculate maintenance requirement
+  ansible.builtin.set_fact:
+    xout_maintenance_required: >-
+      {{
+        (xout_change_hosts | default([]) | length > 0)
+        or (xout_udu_required | default(false) | bool)
+      }}
+  when: xout_action in ['install', 'update']
+
+- name: Execute XOUT update workflow
+  when:
+    - xout_action == 'update'
+    - xout_maintenance_required | bool
+  block:
+    - name: Disable Pegasus before maintenance
+      ansible.builtin.include_tasks: pegasus.yml
+      vars:
+        xout_pegasus_active: 0
+
+    - name: Quiesce Portal modules
+      ansible.builtin.include_tasks: modules_quiesce.yml
+
+    - name: Stop XOUT environment
+      ansible.builtin.include_tasks: serviceflow_stop.yml
+
+    - name: Wait for manual UDU installation
+      ansible.builtin.include_tasks: udu_prompt.yml
+      when: xout_udu_required | bool
+
+    - name: Apply planned RPM changes
+      ansible.builtin.include_tasks: package_apply.yml
+      when: xout_change_hosts | length > 0
+
+    - name: Ensure CUPS before XOUT start
+      ansible.builtin.include_tasks: cups.yml
+
+    - name: Start XOUT environment
+      ansible.builtin.include_tasks: serviceflow_start.yml
+
+    - name: Restore Portal module state
+      ansible.builtin.include_tasks: modules_restore.yml
+
+    - name: Enable Pegasus after successful start
+      ansible.builtin.include_tasks: pegasus.yml
+      vars:
+        xout_pegasus_active: 1
+
+    - name: Enforce disabled boot policy
+      ansible.builtin.include_tasks: ensure_disabled.yml
+
+- name: Report update with no maintenance changes
+  ansible.builtin.debug:
+    msg: >-
+      No RPM changes and no UDU delivery were detected. XOUT lifecycle was not changed.
+  when:
+    - xout_action == 'update'
+    - not xout_maintenance_required | bool
+
+- name: Keep CUPS running after update check
+  ansible.builtin.include_tasks: cups.yml
+  when:
+    - xout_action == 'update'
+    - not xout_maintenance_required | bool
+
+- name: Execute XOUT install workflow
+  when: xout_action == 'install'
+  block:
+    - name: Disable Pegasus before installation
+      ansible.builtin.include_tasks: pegasus.yml
+      vars:
+        xout_pegasus_active: 0
+
+    - name: Wait for manual UDU installation
+      ansible.builtin.include_tasks: udu_prompt.yml
+      when: xout_udu_required | bool
+
+    - name: Apply planned RPM installation
+      ansible.builtin.include_tasks: package_apply.yml
+      when: xout_change_hosts | length > 0
+
+    - name: Ensure CUPS before initial XOUT start
+      ansible.builtin.include_tasks: cups.yml
+
+    - name: Start installed XOUT environment
+      ansible.builtin.include_tasks: serviceflow_start.yml
+
+    - name: Restore any retained Portal module state
+      ansible.builtin.include_tasks: modules_restore.yml
+
+    - name: Enable Pegasus after successful installation
+      ansible.builtin.include_tasks: pegasus.yml
+      vars:
+        xout_pegasus_active: 1
+
+    - name: Enforce disabled boot policy
+      ansible.builtin.include_tasks: ensure_disabled.yml
+
+- name: Execute XOUT stop workflow
+  when: xout_action == 'stop'
+  block:
+    - name: Disable Pegasus before stop
+      ansible.builtin.include_tasks: pegasus.yml
+      vars:
+        xout_pegasus_active: 0
+
+    - name: Quiesce Portal modules before stop
+      ansible.builtin.include_tasks: modules_quiesce.yml
+
+    - name: Stop XOUT environment
+      ansible.builtin.include_tasks: serviceflow_stop.yml
+
+    - name: Enforce disabled boot policy
+      ansible.builtin.include_tasks: ensure_disabled.yml
+
+- name: Execute XOUT start workflow
+  when: xout_action == 'start'
+  block:
+    - name: Ensure CUPS before start
+      ansible.builtin.include_tasks: cups.yml
+
+    - name: Start XOUT environment
+      ansible.builtin.include_tasks: serviceflow_start.yml
+
+    - name: Restore retained Portal module state
+      ansible.builtin.include_tasks: modules_restore.yml
+
+    - name: Enable Pegasus after successful start
+      ansible.builtin.include_tasks: pegasus.yml
+      vars:
+        xout_pegasus_active: 1
+
+    - name: Enforce disabled boot policy
+      ansible.builtin.include_tasks: ensure_disabled.yml
+
+- name: Execute XOUT restart workflow
+  when: xout_action == 'restart'
+  block:
+    - name: Disable Pegasus before restart
+      ansible.builtin.include_tasks: pegasus.yml
+      vars:
+        xout_pegasus_active: 0
+
+    - name: Quiesce Portal modules before restart
+      ansible.builtin.include_tasks: modules_quiesce.yml
+
+    - name: Stop XOUT environment
+      ansible.builtin.include_tasks: serviceflow_stop.yml
+
+    - name: Ensure CUPS before restart start-phase
+      ansible.builtin.include_tasks: cups.yml
+
+    - name: Start XOUT environment
+      ansible.builtin.include_tasks: serviceflow_start.yml
+
+    - name: Restore Portal modules after restart
+      ansible.builtin.include_tasks: modules_restore.yml
+
+    - name: Enable Pegasus after successful restart
+      ansible.builtin.include_tasks: pegasus.yml
+      vars:
+        xout_pegasus_active: 1
+
+    - name: Enforce disabled boot policy
+      ansible.builtin.include_tasks: ensure_disabled.yml
+
+- name: Show final XOUT status
+  ansible.builtin.include_tasks: status.yml
+  when: xout_action in ['install', 'update', 'start', 'stop', 'restart']

@@ -1,0 +1,22 @@
+---
+- name: Initialize UDU requirement
+  ansible.builtin.set_fact:
+    xout_udu_required: false
+
+- name: Check whether an UDU directory belongs to this delivery
+  ansible.builtin.stat:
+    path: "{{ xout_udu_root }}/Auslieferung_{{ xout_udu_version }}/{{ xout_effective_kasse }}/udu"
+  delegate_to: localhost
+  register: xout_udu_folder
+  when:
+    - xout_check_udu | bool
+    - xout_udu_version | string | length > 0
+    - xout_effective_kasse | length > 0
+
+- name: Record UDU requirement
+  ansible.builtin.set_fact:
+    xout_udu_required: "{{ xout_udu_folder.stat.exists | default(false) | bool }}"
+  when:
+    - xout_check_udu | bool
+    - xout_udu_version | string | length > 0
+    - xout_effective_kasse | length > 0

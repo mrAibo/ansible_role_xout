@@ -7,15 +7,18 @@
       Unsupported xout_action={{ xout_action }}. Allowed: status, plan, install,
       update, start, stop, restart.
 
-- name: Verify ServiceFlow collection version is available
+- name: Verify ServiceFlow 0.3.0 is installed on the controller
   ansible.builtin.command:
     argv:
-      - ansible-doc
-      - -t
-      - role
-      - mraibo.serviceflow.lifecycle
+      - ansible-galaxy
+      - collection
+      - list
+      - mraibo.serviceflow
   delegate_to: localhost
   changed_when: false
+  register: xout_serviceflow_version
+  failed_when:
+    - xout_serviceflow_version.rc != 0 or '0.3.0' not in xout_serviceflow_version.stdout
   when: xout_action in ['install', 'update', 'start', 'stop', 'restart']
 
 - name: Check optional release file on the controller

@@ -1,0 +1,31 @@
+---
+- name: Read service state before installation
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_manager_path }}"
+      - --json
+      - list
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_target_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_install_state
+
+- name: Require XOUT services to be stopped before install
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          item.stdout | from_json
+          | selectattr('active', 'equalto', 'active')
+          | list
+          | length
+        ) == 0
+    fail_msg: >-
+      Install mode never updates running XOUT services. Stop the environment first
+      or use xout_action=update for an already installed environment.
+      Host={{ item.item }}
+  loop: "{{ xout_install_state.results }}"
+  loop_control:
+    label: "{{ item.item }}"
