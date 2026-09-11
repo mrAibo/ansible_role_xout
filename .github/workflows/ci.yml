@@ -19,7 +19,7 @@ jobs:
       - name: Compile xmanager
         run: python -m py_compile xmanager.py
       - name: Run unit tests
-        run: python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -p 'test_xmanager.py' -v
       - name: Verify CLI help
         run: |
           python xmanager.py --version
@@ -46,10 +46,15 @@ jobs:
           ansible-galaxy collection install \
             "git+https://github.com/mrAibo/ansible_serviceflow.git,main" \
             -p collections --force
-      - name: Validate wrapper
+      - name: Validate wrapper syntax and interactive selection
+        shell: bash
         run: |
+          set -euo pipefail
           bash -n xoutctl
           ./xoutctl --help >/dev/null
+          printf '4\n1\n' | ANSIBLE_PLAYBOOK=/bin/true ./xoutctl >/tmp/xoutctl-menu.txt
+          grep -q 'Environment : NDS_TEST' /tmp/xoutctl-menu.txt
+          grep -q 'Action      : status' /tmp/xoutctl-menu.txt
       - name: Validate inventories and playbook syntax
         shell: bash
         run: |
@@ -71,3 +76,17 @@ jobs:
               xout_update_role.yml \
               -e xout_properties_file=
           done
+      - name: Execute controller-side plan acceptance test
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANSIBLE_COLLECTIONS_PATH="$PWD/collections"
+          export ANSIBLE_ROLES_PATH="$PWD"
+          ansible-playbook \
+            -i tests/ci_inventory.ini \
+            xout_update_role.yml \
+            -e xout_action=plan \
+            -e "xout_manager_path=$PWD/tests/fake_xmanager.py" \
+            -e xout_properties_file= \
+            -e xout_check_udu=false \
+            -e xout_show_plan=true
