@@ -1,0 +1,46 @@
+---
+- name: Initialize XOUT pre-update runtime state
+  ansible.builtin.set_fact:
+    xout_any_service_active_before_update: false
+
+- name: Read XOUT service state before update
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_python_path }}"
+      - "{{ xout_manager_path }}"
+      - --json
+      - list
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_target_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_pre_update_status
+
+- name: Detect active XOUT services before update
+  ansible.builtin.set_fact:
+    xout_any_service_active_before_update: true
+  loop: "{{ xout_pre_update_status.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: >-
+    (
+      item.stdout
+      | from_json
+      | selectattr('active', 'equalto', 'active')
+      | list
+      | length
+    ) > 0
+
+- name: Record whether XOUT was already completely stopped
+  ansible.builtin.set_fact:
+    xout_environment_pre_stopped: "{{ not (xout_any_service_active_before_update | bool) }}"
+
+- name: Report pre-stopped maintenance environment
+  ansible.builtin.debug:
+    msg: >-
+      XOUT is already DOWN. Update will continue from the maintenance window and
+      will start the environment after package/UDU processing.
+  when:
+    - xout_environment_pre_stopped | bool
+    - xout_show_plan | bool
