@@ -2,6 +2,7 @@
 - name: Verify xmanager 3.x on every XOUT host
   ansible.builtin.command:
     argv:
+      - "{{ xout_python_path }}"
       - "{{ xout_manager_path }}"
       - --version
   delegate_to: "{{ item }}"
