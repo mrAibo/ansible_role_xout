@@ -31,14 +31,61 @@ ACTION:
 Version selection:
   Without RELEASE_FILE, install/update/plan target the newest repository version
   of every component assigned to each host.
-  With RELEASE_FILE, only packages listed in [packages] are changed.
+
+  With RELEASE_FILE, only packages listed in [packages] are changed. Components
+  omitted from the file keep their installed version. Short versions such as
+  25.10.1 resolve to the newest matching RPM release, for example 25.10.1-3.
+
+Release file example: examples/Release_25.10.ini
+
+  [release]
+  name=Release_25.10
+
+  [packages]
+  modeshape=25.10
+  portal=25.10.1
+  pmc=25.10
+  web=25.10.1
+  activemq=2.40.0.0
+  # batchsplitter omitted -> keep installed version
+
+Typical workflow:
+  # Inspect current state
+  ./xoutctl NDS_PROD status
+
+  # Preview update to newest versions from repository
+  ./xoutctl NDS_PROD plan
+
+  # Update existing environment to newest repository versions.
+  # xoutctl automatically runs the preflight plan again and asks for confirmation.
+  ./xoutctl NDS_PROD update
+
+  # Preview/update only the versions defined by a release file
+  ./xoutctl NDS_PROD plan examples/Release_25.10.ini
+  ./xoutctl NDS_PROD update examples/Release_25.10.ini
+
+  # Initial installation of an environment that is already DOWN
+  ./xoutctl NDS_TEST install examples/Release_25.10.ini
+
+  # Lifecycle only; no package update
+  ./xoutctl NDS_TEST stop
+  ./xoutctl NDS_TEST start
+  ./xoutctl NDS_TEST restart
+
+  # Skip the wrapper confirmation (internal UDU prompt is not bypassed)
+  ./xoutctl NDS_TEST restart --yes
+
+  # Downgrades are rejected unless explicitly allowed
+  ./xoutctl NDS_TEST update examples/Release_25.10.ini --allow-downgrade
 
 Examples:
   ./xoutctl NDS_TEST status
   ./xoutctl NDS_TEST plan
-  ./xoutctl NDS_TEST update
-  ./xoutctl NDS_TEST update examples/Release_25.10.ini
-  ./xoutctl HB_PROD restart
+  ./xoutctl NDS_PROD update
+  ./xoutctl NDS_PROD update examples/Release_25.10.ini
+  ./xoutctl NDS_TEST stop
+  ./xoutctl NDS_TEST start
+  ./xoutctl NDS_TEST restart
 EOF
 }
 
