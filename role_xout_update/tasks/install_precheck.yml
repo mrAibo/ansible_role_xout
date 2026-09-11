@@ -29,3 +29,10 @@
   loop: "{{ xout_install_state.results }}"
   loop_control:
     label: "{{ item.item }}"
+
+- name: Validate package topology after planned installation
+  ansible.builtin.include_tasks: install_precheck_host.yml
+  loop: "{{ xout_target_hosts }}"
+  loop_control:
+    loop_var: xout_install_check_host
+    label: "{{ xout_install_check_host }}"

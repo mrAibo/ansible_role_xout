@@ -1,0 +1,12 @@
+---
+- name: Require every inventory component to exist after install on {{ xout_install_check_host }}
+  ansible.builtin.assert:
+    that:
+      - item.installed is not none or item.action == 'install'
+    fail_msg: >-
+      Inventory expects {{ item.package }} on {{ xout_install_check_host }}, but the package is
+      neither installed nor selected for installation. Add it to the release file, or run
+      install without a release file to target the latest version for every inventory component.
+  loop: "{{ xout_package_plans[xout_install_check_host].packages }}"
+  loop_control:
+    label: "{{ item.package }}"

@@ -161,12 +161,13 @@ No XOUT service, Portal module or Pegasus state is changed.
 
 ### update
 
-Use for an already installed XOUT environment.
+Use for an already installed and inventory-consistent XOUT environment. Before maintenance, the role verifies that every component declared by the inventory already has its corresponding RPM installed. A missing topology package aborts before Pegasus, Portal modules or services are changed.
 
 Workflow when maintenance is required:
 
 ```text
 full package preflight
+→ validate installed inventory topology
 → Pegasus OFF
 → save + quiesce running Portal modules
 → ServiceFlow reverse STOP
@@ -182,11 +183,13 @@ full package preflight
 
 If no RPM change and no UDU delivery are detected, the role does not bounce the XOUT environment.
 
-`update` deliberately refuses an expected component that is not installed. Use `install` while the environment is stopped to add missing packages.
+`update` never installs a missing topology component. Stop the environment and use `install` for that case.
 
 ### install
 
 Use for initial installation or to add missing XOUT components. Install mode requires existing XOUT services on the selected hosts to be stopped before RPM changes.
+
+Before changing RPMs, the role also proves that every component declared by the inventory will exist after the planned installation. With a partial release file, a component that is both missing locally and omitted from `[packages]` causes a preflight failure instead of a later ServiceFlow start failure.
 
 ```bash
 ./xoutctl NDS_TEST install
@@ -312,9 +315,11 @@ If restore fails, the file is intentionally retained for recovery. A new stop/up
 The workflow is intentionally fail-safe:
 
 - package/repository errors during `plan` abort before service changes;
+- inventory/package topology inconsistencies abort before lifecycle changes;
 - a package failure after shutdown leaves the environment DOWN;
 - already updated hosts are not rolled back automatically;
-- rerunning the same exact target turns already completed packages into `noop`;
+- repeating the same explicit release target is idempotent for packages already at that target;
+- `latest` mode is re-resolved on a new run, so a newer repository delivery may become the new target;
 - a START/readiness failure triggers reverse ServiceFlow STOP so the environment returns to DOWN;
 - Pegasus/module state is retained when recovery still needs to be completed.
 

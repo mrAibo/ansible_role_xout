@@ -19,7 +19,7 @@
   register: xout_serviceflow_version
   failed_when:
     - xout_serviceflow_version.rc != 0 or '0.3.0' not in xout_serviceflow_version.stdout
-  when: xout_action in ['install', 'update', 'start', 'stop', 'restart']
+  when: xout_action in ['plan', 'install', 'update', 'start', 'stop', 'restart']
 
 - name: Check optional release file on the controller
   ansible.builtin.stat:

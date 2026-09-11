@@ -1,0 +1,12 @@
+---
+- name: Require every inventory component package to be installed on {{ xout_update_check_host }}
+  ansible.builtin.assert:
+    that:
+      - item.installed is not none
+    fail_msg: >-
+      Inventory expects {{ item.package }} on {{ xout_update_check_host }}, but it is not installed.
+      Update mode never adds missing topology components. Stop the environment and use
+      xout_action=install to add the missing package before running update.
+  loop: "{{ xout_package_plans[xout_update_check_host].packages }}"
+  loop_control:
+    label: "{{ item.package }}"

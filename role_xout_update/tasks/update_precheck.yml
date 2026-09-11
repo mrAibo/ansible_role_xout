@@ -1,17 +1,7 @@
 ---
-- name: Refuse missing component packages in update mode
-  ansible.builtin.assert:
-    that:
-      - >-
-        (
-          xout_package_plans[item].packages
-          | selectattr('action', 'equalto', 'install')
-          | list
-          | length
-        ) == 0
-    fail_msg: >-
-      Update mode found an expected XOUT package that is not installed on {{ item }}.
-      Use xout_action=install while the environment is stopped to add missing components.
+- name: Validate installed package topology for update hosts
+  ansible.builtin.include_tasks: update_precheck_host.yml
   loop: "{{ xout_target_hosts }}"
   loop_control:
-    label: "{{ item }}"
+    loop_var: xout_update_check_host
+    label: "{{ xout_update_check_host }}"
