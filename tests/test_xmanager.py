@@ -94,6 +94,53 @@ class XManagerTests(unittest.TestCase):
         self.assertEqual(portal["action"], "noop")
         self.assertEqual(portal["reason"], "not_in_release_file")
 
+    def test_installed_package_missing_from_repo_is_noop(self):
+        class Dummy:
+            args = type("Args", (), {"repo_alias": "xout-repo"})()
+            query_repo_candidates = lambda self, packages: {"xout-batchsplitter": []}
+            get_installed_package_version = lambda self, package: "24.1.4-1"
+            die = mod.XManager.die
+            build_package_plan = mod.XManager.build_package_plan
+
+        plan = Dummy().build_package_plan(["xout-batchsplitter"], None, False)
+        item = plan["packages"][0]
+        self.assertEqual(item["target"], "24.1.4-1")
+        self.assertEqual(item["action"], "noop")
+        self.assertEqual(item["reason"], "package_not_in_repository_keep_installed")
+        self.assertFalse(plan["has_errors"])
+        self.assertFalse(plan["has_changes"])
+
+    def test_uninstalled_package_missing_from_repo_is_error(self):
+        class Dummy:
+            args = type("Args", (), {"repo_alias": "xout-repo"})()
+            query_repo_candidates = lambda self, packages: {"xout-web": []}
+            get_installed_package_version = lambda self, package: None
+            die = mod.XManager.die
+            build_package_plan = mod.XManager.build_package_plan
+
+        plan = Dummy().build_package_plan(["xout-web"], None, False)
+        item = plan["packages"][0]
+        self.assertEqual(item["action"], "error")
+        self.assertEqual(item["reason"], "package_not_found_in_repository")
+        self.assertTrue(plan["has_errors"])
+
+    def test_explicit_release_target_missing_from_repo_is_error(self):
+        class Dummy:
+            args = type("Args", (), {"repo_alias": "xout-repo"})()
+            query_repo_candidates = lambda self, packages: {"xout-web": []}
+            get_installed_package_version = lambda self, package: "25.10-1"
+            die = mod.XManager.die
+            build_package_plan = mod.XManager.build_package_plan
+
+        with tempfile.TemporaryDirectory() as directory:
+            release = Path(directory) / "target.ini"
+            release.write_text("[packages]\nweb=25.11\n", encoding="utf-8")
+            plan = Dummy().build_package_plan(["xout-web"], release, False)
+        item = plan["packages"][0]
+        self.assertEqual(item["action"], "error")
+        self.assertEqual(item["reason"], "requested_version_not_found")
+        self.assertTrue(plan["has_errors"])
+
     def test_downgrade_requires_explicit_flag(self):
         class Dummy:
             args = type("Args", (), {"repo_alias": "xout-repo"})()
