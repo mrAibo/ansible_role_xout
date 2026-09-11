@@ -48,6 +48,10 @@
   ansible.builtin.include_tasks: update_precheck.yml
   when: xout_action == 'update'
 
+- name: Detect whether update continues an already stopped maintenance window
+  ansible.builtin.include_tasks: update_state.yml
+  when: xout_action == 'update'
+
 - name: Validate install precondition
   ansible.builtin.include_tasks: install_precheck.yml
   when: xout_action == 'install'
@@ -58,6 +62,7 @@
       {{
         (xout_change_hosts | default([]) | length > 0)
         or (xout_udu_required | default(false) | bool)
+        or (xout_environment_pre_stopped | default(false) | bool)
       }}
   when: xout_action in ['install', 'update']
 
@@ -163,6 +168,9 @@
     - name: Stop XOUT environment
       ansible.builtin.include_tasks: serviceflow_stop.yml
 
+    - name: Discard transient Portal module state after clean standalone stop
+      ansible.builtin.include_tasks: discard_module_state.yml
+
     - name: Enforce disabled boot policy
       ansible.builtin.include_tasks: ensure_disabled.yml
 
@@ -216,6 +224,12 @@
 
     - name: Enforce disabled boot policy
       ansible.builtin.include_tasks: ensure_disabled.yml
+
+- name: Verify final XOUT runtime state
+  ansible.builtin.include_tasks: postcheck.yml
+  when:
+    - xout_postcheck_enabled | bool
+    - xout_action in ['install', 'update', 'start', 'restart']
 
 - name: Show final XOUT status
   ansible.builtin.include_tasks: status.yml
