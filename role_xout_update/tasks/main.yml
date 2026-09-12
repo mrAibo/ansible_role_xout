@@ -162,14 +162,8 @@
       vars:
         xout_pegasus_active: 0
 
-    - name: Quiesce Portal modules before stop
-      ansible.builtin.include_tasks: modules_quiesce.yml
-
     - name: Stop XOUT environment
       ansible.builtin.include_tasks: serviceflow_stop.yml
-
-    - name: Discard transient Portal module state after clean standalone stop
-      ansible.builtin.include_tasks: discard_module_state.yml
 
     - name: Enforce disabled boot policy
       ansible.builtin.include_tasks: ensure_disabled.yml
