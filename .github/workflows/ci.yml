@@ -46,17 +46,21 @@ jobs:
           ansible-galaxy collection install \
             "git+https://github.com/mrAibo/ansible_serviceflow.git,main" \
             -p collections --force
-      - name: Validate wrapper syntax and interactive multi-selection
+      - name: Validate wrapper syntax, component option and interactive multi-selection
         shell: bash
         run: |
           set -euo pipefail
           bash -n xoutctl
-          ./xoutctl --help >/dev/null
+          ./xoutctl --help >/tmp/xoutctl-help.txt
+          grep -q -- '--component COMPONENT' /tmp/xoutctl-help.txt
           printf '1,4,5\n1\n' | ANSIBLE_PLAYBOOK=/bin/true ./xoutctl >/tmp/xoutctl-menu.txt
           grep -q -- '- HB_TEST (HB_TEST_XOUT.ini)' /tmp/xoutctl-menu.txt
           grep -q -- '- NDS_TEST (NDS_TEST_XOUT.ini)' /tmp/xoutctl-menu.txt
           grep -q -- '- NDS_MIGRATION (NDS_MIG_XOUT.ini)' /tmp/xoutctl-menu.txt
           grep -q 'Action       : status' /tmp/xoutctl-menu.txt
+          ANSIBLE_PLAYBOOK=/bin/true ./xoutctl NDS_TEST plan --component web >/tmp/xoutctl-component.txt
+          grep -q 'Component    : web' /tmp/xoutctl-component.txt
+          grep -q 'xout_component=web' /tmp/xoutctl-component.txt
       - name: Validate inventories and playbook syntax
         shell: bash
         run: |
@@ -78,7 +82,7 @@ jobs:
               xout_update_role.yml \
               -e xout_properties_file=
           done
-      - name: Execute controller-side plan acceptance test
+      - name: Execute controller-side plan acceptance tests
         shell: bash
         run: |
           set -euo pipefail
@@ -91,4 +95,24 @@ jobs:
             -e "xout_manager_path=$PWD/tests/fake_xmanager.py" \
             -e xout_properties_file= \
             -e xout_check_udu=false \
-            -e xout_show_plan=true
+            -e xout_show_plan=true \
+            >/tmp/full-plan.txt
+          grep -q 'Scope: full environment' /tmp/full-plan.txt
+          grep -q '1. modeshape -> ci_modeshape' /tmp/full-plan.txt
+          grep -q '5. web -> ci_web1, ci_portal2' /tmp/full-plan.txt
+
+          ansible-playbook \
+            -i tests/ci_inventory.ini \
+            xout_update_role.yml \
+            -e xout_action=plan \
+            -e xout_component=web \
+            -e "xout_manager_path=$PWD/tests/fake_xmanager.py" \
+            -e xout_properties_file= \
+            -e xout_check_udu=false \
+            -e xout_show_plan=true \
+            >/tmp/component-plan.txt
+          grep -q 'Scope: component web' /tmp/component-plan.txt
+          grep -q 'ci_web1' /tmp/component-plan.txt
+          grep -q 'ci_portal2' /tmp/component-plan.txt
+          ! grep -q 'ci_modeshape' /tmp/component-plan.txt
+          grep -q '1. web -> ci_web1, ci_portal2' /tmp/component-plan.txt
