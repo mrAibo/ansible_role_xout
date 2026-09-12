@@ -40,48 +40,6 @@
     - xout_manage_pegasus | bool
     - xout_action in ['install', 'update', 'start', 'stop', 'restart']
 
-- name: Create runtime ModeShape group
-  ansible.builtin.add_host:
-    name: "{{ item }}"
-    groups: xout_runtime_modeshape
-  loop: "{{ xout_modeshape_hosts }}"
-  changed_when: false
-
-- name: Create runtime ActiveMQ group
-  ansible.builtin.add_host:
-    name: "{{ item }}"
-    groups: xout_runtime_activemq
-  loop: "{{ xout_activemq_hosts }}"
-  changed_when: false
-
-- name: Create runtime PMC group
-  ansible.builtin.add_host:
-    name: "{{ item }}"
-    groups: xout_runtime_pmc
-  loop: "{{ xout_pmc_hosts }}"
-  changed_when: false
-
-- name: Create runtime Portal group
-  ansible.builtin.add_host:
-    name: "{{ item }}"
-    groups: xout_runtime_portal
-  loop: "{{ xout_portal_hosts }}"
-  changed_when: false
-
-- name: Create runtime Web group
-  ansible.builtin.add_host:
-    name: "{{ item }}"
-    groups: xout_runtime_web
-  loop: "{{ xout_web_hosts }}"
-  changed_when: false
-
-- name: Create runtime Batchsplitter group
-  ansible.builtin.add_host:
-    name: "{{ item }}"
-    groups: xout_runtime_batchsplitter
-  loop: "{{ xout_batchsplitter_hosts }}"
-  changed_when: false
-
 - name: Initialize ServiceFlow service list
   ansible.builtin.set_fact:
     xout_serviceflow_services: []
@@ -93,7 +51,7 @@
         {
           'name': 'modeshape',
           'unit': 'xout-modeshape.service',
-          'groups': ['xout_runtime_modeshape'],
+          'groups': ['modeshape'],
           'ready': {
             'type': 'log',
             'path': '/var/log/xout/modeshape/server.log',
@@ -112,7 +70,7 @@
         {
           'name': 'activemq',
           'unit': 'xout-activemq-artemis.service',
-          'groups': ['xout_runtime_activemq'],
+          'groups': ['activemq'],
           'ready': {'type': 'systemd', 'timeout': 60, 'interval': 2}
         }
       ] }}
@@ -125,7 +83,7 @@
         {
           'name': 'pmc',
           'unit': 'xout-pmc.service',
-          'groups': ['xout_runtime_pmc'],
+          'groups': ['pmc'],
           'ready': {
             'type': 'log',
             'path': '/var/log/xout/pmc/server.log',
@@ -144,7 +102,7 @@
         {
           'name': 'portal',
           'unit': 'xout-portal.service',
-          'groups': ['xout_runtime_portal'],
+          'groups': ['portal'],
           'ready': {'type': 'systemd', 'timeout': 90, 'interval': 2}
         }
       ] }}
@@ -157,7 +115,7 @@
         {
           'name': 'web',
           'unit': 'xout-web.service',
-          'groups': ['xout_runtime_web'],
+          'groups': ['web', 'tobi'],
           'ready': {'type': 'systemd', 'timeout': 60, 'interval': 2}
         }
       ] }}
@@ -170,7 +128,7 @@
         {
           'name': 'batchsplitter',
           'unit': 'xout-batchsplitter.service',
-          'groups': ['xout_runtime_batchsplitter'],
+          'groups': ['batchsplitter'],
           'ready': {'type': 'systemd', 'timeout': 60, 'interval': 2}
         }
       ] }}
