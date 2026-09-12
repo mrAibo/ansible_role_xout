@@ -1,12 +1,12 @@
 ---
-- name: Verify xmanager 3.x on every XOUT host
+- name: Verify xmanager 3.x on operation hosts
   ansible.builtin.command:
     argv:
       - "{{ xout_python_path }}"
       - "{{ xout_manager_path }}"
       - --version
   delegate_to: "{{ item }}"
-  loop: "{{ xout_target_hosts }}"
+  loop: "{{ xout_operation_hosts }}"
   loop_control:
     label: "{{ item }}"
   changed_when: false
