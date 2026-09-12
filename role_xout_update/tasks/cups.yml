@@ -1,11 +1,48 @@
 ---
-- name: Ensure CUPS is running on Portal hosts
-  ansible.builtin.systemd_service:
-    name: cups.service
-    state: started
-  become: true
+- name: Check CUPS runtime state on Portal hosts
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - --quiet
+      - cups.service
   delegate_to: "{{ item }}"
   loop: "{{ xout_portal_hosts }}"
   loop_control:
     label: "{{ item }}"
+  changed_when: false
+  failed_when: false
+  register: xout_cups_state
+  when: xout_check_cups | bool
+
+- name: Start CUPS where it is not active
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/sudo
+      - -n
+      - /usr/bin/systemctl
+      - start
+      - cups.service
+  delegate_to: "{{ item.item }}"
+  loop: "{{ xout_cups_state.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('unknown-host') }}"
+  when:
+    - xout_check_cups | bool
+    - item.rc | default(1) != 0
+  changed_when: true
+  register: xout_cups_start
+
+- name: Verify CUPS is active on Portal hosts
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/systemctl
+      - is-active
+      - --quiet
+      - cups.service
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_portal_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
   when: xout_check_cups | bool
