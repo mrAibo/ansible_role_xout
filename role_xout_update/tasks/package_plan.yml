@@ -123,12 +123,12 @@
 
       START ORDER
       {% for service in xout_operation_serviceflow_services %}
-        {{ loop.index }}. {{ service.name }} -> {{ xout_operation_hosts | join(', ') }}
+        {{ loop.index }}. {{ service.name }} -> {{ (service.groups | map('extract', groups) | list | flatten | unique | list) | join(', ') }}
       {% endfor %}
 
       STOP ORDER
       {% for service in xout_operation_serviceflow_services | reverse %}
-        {{ loop.index }}. {{ service.name }} -> {{ xout_operation_hosts | join(', ') }}
+        {{ loop.index }}. {{ service.name }} -> {{ (service.groups | map('extract', groups) | list | flatten | unique | list) | join(', ') }}
       {% endfor %}
   when: xout_show_plan | bool
 
