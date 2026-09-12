@@ -13,6 +13,58 @@
   changed_when: false
   register: xout_status_results
 
+- name: Read Pegasus status
+  ansible.builtin.raw: |
+    export ORACLE_HOME={{ hostvars[xout_oracle_hosts[0]].oracle_home | quote }}
+    export ORACLE_SID={{ hostvars[xout_oracle_hosts[0]].oracle_sid | quote }}
+    export PATH="$ORACLE_HOME/bin:$PATH"
+    {{ hostvars[xout_oracle_hosts[0]].sql_plus | quote }} -S \
+      {{ (hostvars[xout_oracle_hosts[0]].oracle_user ~ '/' ~ hostvars[xout_oracle_hosts[0]].oracle_pass ~ '@' ~ hostvars[xout_oracle_hosts[0]].oracle_sid) | quote }} <<'SQL'
+    WHENEVER SQLERROR EXIT SQL.SQLCODE
+    SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
+    SELECT 'PEGASUS_INACTIVE=' || COUNT(*)
+      FROM pegasus_plugins
+     WHERE TYPE=4
+       AND active<>1;
+    EXIT;
+    SQL
+  delegate_to: "{{ xout_oracle_hosts[0] }}"
+  register: xout_status_pegasus
+  changed_when: false
+  failed_when: false
+  no_log: true
+  when:
+    - xout_manage_pegasus | bool
+    - xout_oracle_hosts | length == 1
+
+- name: Resolve Pegasus status label
+  ansible.builtin.set_fact:
+    xout_status_pegasus_label: >-
+      {{
+        'ACTIVE'
+        if (
+          xout_manage_pegasus | bool
+          and xout_oracle_hosts | length == 1
+          and xout_status_pegasus.rc | default(1) == 0
+          and 'PEGASUS_INACTIVE=0' in (
+            xout_status_pegasus.stdout | default('') | regex_replace('\\s+', '')
+          )
+        )
+        else (
+          'NOT FULLY ACTIVE'
+          if (
+            xout_manage_pegasus | bool
+            and xout_oracle_hosts | length == 1
+            and xout_status_pegasus.rc | default(1) == 0
+          )
+          else (
+            'UNKNOWN'
+            if xout_manage_pegasus | bool
+            else 'NOT MANAGED'
+          )
+        )
+      }}
+
 - name: Display environment status
   ansible.builtin.debug:
     msg: |-
@@ -24,3 +76,5 @@
         {{ '%-27s' | format(service.name) }} {{ '%-10s' | format(service.active) }} enabled={{ service.enabled }} version={{ service.version }}
       {% endfor %}
       {% endfor %}
+
+      Pegasus                     {{ xout_status_pegasus_label }}
