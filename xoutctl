@@ -18,7 +18,7 @@ usage() {
   cat <<'EOF'
 Usage:
   ./xoutctl
-  ./xoutctl ENV ACTION [RELEASE_FILE] [--component COMPONENT] [--allow-downgrade] [--yes]
+  ./xoutctl ENV ACTION [RELEASE_FILE] [--component COMPONENT] [--allow-downgrade] [--verbose] [--yes]
 
 Interactive mode:
   Run ./xoutctl without arguments. One or more environments can be selected,
@@ -32,6 +32,18 @@ ENV:
 
 ACTION:
   status | plan | install | update | start | stop | restart
+
+Output:
+  Compact operator output is the default. It shows the effective package plan,
+  lifecycle phases, status, warnings/failures and the final result while hiding
+  routine Ansible task/loop/skip noise.
+
+  --verbose restores the native full Ansible output for troubleshooting.
+
+  Examples:
+    ./xoutctl NDS_PROD status
+    ./xoutctl NDS_PROD restart
+    ./xoutctl NDS_PROD restart --verbose
 
 Version selection:
   Without RELEASE_FILE, install/update/plan target the newest repository version
@@ -109,6 +121,9 @@ Typical workflow:
   # update/start/restart perform a final postcheck of XOUT services, boot policy,
   # CUPS, Portal/Jolokia/module-state cleanup and Pegasus.
 
+  # Full native Ansible output for troubleshooting
+  ./xoutctl NDS_TEST restart --verbose
+
   # Skip the wrapper confirmation (internal UDU prompt is not bypassed)
   ./xoutctl NDS_TEST restart --yes
 
@@ -126,6 +141,7 @@ Examples:
   ./xoutctl NDS_TEST stop
   ./xoutctl NDS_TEST start
   ./xoutctl NDS_TEST restart
+  ./xoutctl NDS_TEST restart --verbose
 EOF
 }
 
@@ -236,10 +252,22 @@ run_playbook() {
     cmd+=(-e "$item")
   done
 
-  printf '\nCommand:\n  '
-  printf '%q ' "${cmd[@]}"
-  printf '\n\n'
-  "${cmd[@]}"
+  if [[ "$VERBOSE" == true ]]; then
+    printf '\nCommand:\n  '
+    printf '%q ' "${cmd[@]}"
+    printf '\n\n'
+    "${cmd[@]}"
+    return
+  fi
+
+  local callback_path="$SCRIPT_DIR/callback_plugins"
+  if [[ -n "${ANSIBLE_CALLBACK_PLUGINS:-}" ]]; then
+    callback_path="$callback_path:$ANSIBLE_CALLBACK_PLUGINS"
+  fi
+
+  ANSIBLE_STDOUT_CALLBACK=xout_compact \
+  ANSIBLE_CALLBACK_PLUGINS="$callback_path" \
+    "${cmd[@]}"
 }
 
 run_for_environments() {
@@ -278,6 +306,7 @@ print_summary() {
   echo "  Target       : ${RELEASE_FILE:-latest versions from repository}"
   echo "  Component    : ${COMPONENT:-full environment}"
   echo "  Downgrade    : $ALLOW_DOWNGRADE"
+  echo "  Output       : $([[ "$VERBOSE" == true ]] && echo verbose || echo compact)"
 }
 
 ENVIRONMENT=""
@@ -287,6 +316,7 @@ RELEASE_FILE=""
 COMPONENT=""
 ALLOW_DOWNGRADE=false
 ASSUME_YES=false
+VERBOSE=false
 declare -a ENVIRONMENTS=()
 
 if [[ $# -eq 0 ]]; then
@@ -331,6 +361,7 @@ else
         ;;
       --component=*) COMPONENT="${1#*=}"; COMPONENT="${COMPONENT,,}" ;;
       --allow-downgrade) ALLOW_DOWNGRADE=true ;;
+      --verbose) VERBOSE=true ;;
       -y|--yes) ASSUME_YES=true ;;
       -h|--help) usage; exit 0 ;;
       *) echo "Unknown option: $1" >&2; exit 2 ;;
