@@ -1,0 +1,82 @@
+---
+- name: Verify isolated component is active
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - "{{ xout_operation_serviceflow_services[0].unit }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_component_active
+  failed_when: >-
+    xout_component_active.rc != 0
+    or xout_component_active.stdout | trim != 'active'
+
+- name: Verify isolated component boot policy
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-enabled
+      - "{{ xout_operation_serviceflow_services[0].unit }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  failed_when: false
+  register: xout_component_enabled
+  when: xout_component not in (xout_boot_disable_exempt_components | default([]))
+
+- name: Assert isolated component is disabled for boot
+  ansible.builtin.assert:
+    that:
+      - (item.stdout | trim) not in ['enabled', 'enabled-runtime']
+      - item.stdout | trim != ''
+    fail_msg: >-
+      Boot policy postcheck failed for {{ xout_component }} on {{ item.item }}:
+      state={{ item.stdout | default('') | trim }}.
+  loop: "{{ xout_component_enabled.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item | default('unknown-host') }}"
+  when:
+    - xout_component not in (xout_boot_disable_exempt_components | default([]))
+    - not (item.skipped | default(false) | bool)
+
+- name: Read installed component RPM version
+  ansible.builtin.command:
+    argv:
+      - rpm
+      - -q
+      - --qf
+      - "%{VERSION}-%{RELEASE}"
+      - "{{ xout_package_plans[item].packages[0].package }}"
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  changed_when: false
+  register: xout_component_rpm_versions
+
+- name: Assert isolated component RPM target is installed
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+      - item.stdout | trim == xout_package_plans[item.item].packages[0].target
+    fail_msg: >-
+      RPM version postcheck failed for {{ xout_component }} on {{ item.item }}:
+      installed={{ item.stdout | default('') | trim }},
+      expected={{ xout_package_plans[item.item].packages[0].target }}.
+  loop: "{{ xout_component_rpm_versions.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Report successful isolated component update
+  ansible.builtin.debug:
+    msg: >-
+      Isolated component update passed for {{ xout_component }} on
+      {{ xout_operation_hosts | join(', ') }}: expected RPM version is installed,
+      service is active, and boot policy is valid. Other XOUT components and
+      Pegasus were not intentionally changed.
