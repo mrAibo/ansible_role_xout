@@ -13,3 +13,4 @@
   register: xout_manager_version_results
   failed_when:
     - xout_manager_version_results.rc != 0 or 'xmanager.py 3.' not in xout_manager_version_results.stdout
+  when: xout_action != 'status'
