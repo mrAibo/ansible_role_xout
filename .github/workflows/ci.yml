@@ -112,7 +112,7 @@ jobs:
             -e xout_show_plan=true \
             >/tmp/component-plan.txt
           grep -q 'Scope: component web' /tmp/component-plan.txt
-          grep -q 'ci_web1' /tmp/component-plan.txt
-          grep -q 'ci_portal2' /tmp/component-plan.txt
-          ! grep -q 'ci_modeshape' /tmp/component-plan.txt
+          grep -q 'xout-web.*\[upgrade\]' /tmp/component-plan.txt
+          ! grep -q 'xout-modeshape.*\[upgrade\]' /tmp/component-plan.txt
+          ! grep -q 'xout-portal.*\[upgrade\]' /tmp/component-plan.txt
           grep -q '1. web -> ci_web1, ci_portal2' /tmp/component-plan.txt
