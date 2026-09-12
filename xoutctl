@@ -18,7 +18,7 @@ usage() {
   cat <<'EOF'
 Usage:
   ./xoutctl
-  ./xoutctl ENV ACTION [RELEASE_FILE] [--allow-downgrade] [--yes]
+  ./xoutctl ENV ACTION [RELEASE_FILE] [--component COMPONENT] [--allow-downgrade] [--yes]
 
 Interactive mode:
   Run ./xoutctl without arguments. One or more environments can be selected,
@@ -41,6 +41,20 @@ Version selection:
   omitted from the file keep their installed version. Short versions such as
   25.10.1 resolve to the newest matching RPM release, for example 25.10.1-3.
 
+Component-scoped update:
+  --component COMPONENT limits plan/update to one operationally independent
+  component. Only that component is stopped, changed and started; Pegasus,
+  Portal module lifecycle, CUPS and unrelated XOUT services are not touched.
+
+  Isolated component mode is guarded by the role variable
+  xout_isolated_update_components. The default allowlist currently contains:
+    web
+
+  Examples:
+    ./xoutctl NDS_PROD plan Release_WEB_26.7.ini --component web --allow-downgrade
+    ./xoutctl NDS_PROD update Release_WEB_26.7.ini --component web --allow-downgrade
+    ./xoutctl NDS_PROD update --component web
+
 Release file example: examples/Release_25.10.ini
 
   [release]
@@ -59,14 +73,18 @@ Typical workflow:
   ./xoutctl
 
   # Inspect current state
-  ./xoutctl NDS_PROD status
+  ./xoutctl NDS_TEST status
 
   # Preview update to newest versions from repository
-  ./xoutctl NDS_PROD plan
+  ./xoutctl NDS_TEST plan
 
   # Update existing environment to newest repository versions.
   # xoutctl automatically runs the preflight plan again and asks for confirmation.
   ./xoutctl NDS_PROD update
+
+  # Preview/update only one isolated component without bouncing full XOUT.
+  ./xoutctl NDS_PROD plan Release_WEB_26.7.ini --component web --allow-downgrade
+  ./xoutctl NDS_PROD update Release_WEB_26.7.ini --component web --allow-downgrade
 
   # Maintenance window: stop XOUT first, let other teams perform their work,
   # then continue later with the XOUT update. A clean standalone stop does not
@@ -104,6 +122,7 @@ Examples:
   ./xoutctl NDS_PROD stop
   ./xoutctl NDS_PROD update
   ./xoutctl NDS_PROD update examples/Release_25.10.ini
+  ./xoutctl NDS_PROD update Release_WEB_26.7.ini --component web --allow-downgrade
   ./xoutctl NDS_TEST stop
   ./xoutctl NDS_TEST start
   ./xoutctl NDS_TEST restart
@@ -204,6 +223,9 @@ run_playbook() {
   if [[ -n "$RELEASE_FILE" ]]; then
     extra_vars+=("xout_release_file=$RELEASE_FILE")
   fi
+  if [[ -n "$COMPONENT" ]]; then
+    extra_vars+=("xout_component=$COMPONENT")
+  fi
   if [[ "$ALLOW_DOWNGRADE" == true ]]; then
     extra_vars+=("xout_allow_downgrade=true")
   fi
@@ -254,6 +276,7 @@ print_summary() {
     printf '    - %s (%s)\n' "$env" "${INVENTORIES[$env]}"
   done
   echo "  Target       : ${RELEASE_FILE:-latest versions from repository}"
+  echo "  Component    : ${COMPONENT:-full environment}"
   echo "  Downgrade    : $ALLOW_DOWNGRADE"
 }
 
@@ -261,6 +284,7 @@ ENVIRONMENT=""
 INVENTORY=""
 ACTION=""
 RELEASE_FILE=""
+COMPONENT=""
 ALLOW_DOWNGRADE=false
 ASSUME_YES=false
 declare -a ENVIRONMENTS=()
@@ -300,6 +324,12 @@ else
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --component)
+        [[ $# -ge 2 ]] || { echo "--component requires a value" >&2; exit 2; }
+        COMPONENT="${2,,}"
+        shift
+        ;;
+      --component=*) COMPONENT="${1#*=}"; COMPONENT="${COMPONENT,,}" ;;
       --allow-downgrade) ALLOW_DOWNGRADE=true ;;
       -y|--yes) ASSUME_YES=true ;;
       -h|--help) usage; exit 0 ;;
@@ -313,6 +343,11 @@ case "$ACTION" in
   status|plan|install|update|start|stop|restart) ;;
   *) echo "Unknown action: $ACTION" >&2; exit 2 ;;
 esac
+
+if [[ -n "$COMPONENT" && "$ACTION" != "plan" && "$ACTION" != "update" ]]; then
+  echo "--component is supported only with plan or update." >&2
+  exit 2
+fi
 
 [[ -f "$PLAYBOOK" ]] || {
   echo "Playbook not found: $PLAYBOOK" >&2
