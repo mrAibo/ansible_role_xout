@@ -90,29 +90,48 @@
   loop_control:
     label: "{{ item.item }}"
 
-- name: Verify Pegasus plugins are active
-  ansible.builtin.shell: |
-    set -o pipefail
-    result="$({{ hostvars[xout_oracle_hosts[0]].sql_plus }} -S \
-      {{ hostvars[xout_oracle_hosts[0]].oracle_user }}/{{ hostvars[xout_oracle_hosts[0]].oracle_pass }}@{{ hostvars[xout_oracle_hosts[0]].oracle_sid }} <<'SQL'
+- name: Read Pegasus plugin state
+  ansible.builtin.raw: |
+    export ORACLE_HOME={{ hostvars[xout_oracle_hosts[0]].oracle_home | quote }}
+    export ORACLE_SID={{ hostvars[xout_oracle_hosts[0]].oracle_sid | quote }}
+    export PATH="$ORACLE_HOME/bin:$PATH"
+    {{ hostvars[xout_oracle_hosts[0]].sql_plus | quote }} -S \
+      {{ (hostvars[xout_oracle_hosts[0]].oracle_user ~ '/' ~ hostvars[xout_oracle_hosts[0]].oracle_pass ~ '@' ~ hostvars[xout_oracle_hosts[0]].oracle_sid) | quote }} <<'SQL'
     WHENEVER SQLERROR EXIT SQL.SQLCODE
     SET PAGESIZE 0 FEEDBACK OFF VERIFY OFF HEADING OFF ECHO OFF
-    SELECT COUNT(*)
+    SELECT 'PEGASUS_INACTIVE=' || COUNT(*)
       FROM pegasus_plugins
      WHERE TYPE=4
        AND active<>1;
     EXIT;
     SQL
-    )"
-    test "$(printf '%s' "$result" | tr -d '[:space:]')" = "0"
-  args:
-    executable: /bin/bash
-  environment:
-    ORACLE_HOME: "{{ hostvars[xout_oracle_hosts[0]].oracle_home }}"
-    ORACLE_SID: "{{ hostvars[xout_oracle_hosts[0]].oracle_sid }}"
   delegate_to: "{{ xout_oracle_hosts[0] }}"
+  register: xout_postcheck_pegasus
   changed_when: false
+  failed_when: false
   no_log: true
+  when: xout_manage_pegasus | bool
+
+- name: Assert Pegasus plugins are active
+  ansible.builtin.assert:
+    that:
+      - xout_postcheck_pegasus.rc | default(1) == 0
+      - "'PEGASUS_INACTIVE=0' in (xout_postcheck_pegasus.stdout | default('') | regex_replace('\\s+', ''))"
+    fail_msg: >-
+      Pegasus postcheck failed on {{ xout_oracle_hosts[0] }}
+      (rc={{ xout_postcheck_pegasus.rc | default('unknown') }}).
+      {{
+        (
+          (
+            (xout_postcheck_pegasus.stdout | default(''))
+            ~ '\n'
+            ~ (xout_postcheck_pegasus.stderr | default(''))
+          )
+          | regex_findall('(?m)^(?:ORA-|TNS-|SP2-|PEGASUS_INACTIVE=).*$')
+          | join('; ')
+        )
+        or 'No Oracle error detail returned.'
+      }}
   when: xout_manage_pegasus | bool
 
 - name: Report successful XOUT postcheck
