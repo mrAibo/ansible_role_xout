@@ -8,7 +8,10 @@ xout_allow_downgrade: false
 xout_show_plan: true
 xout_parallel_hosts: true
 xout_serviceflow_parallel_timeout: 300
-xout_serviceflow_become: true
+xout_serviceflow_become: false
+xout_serviceflow_systemctl_prefix:
+  - sudo
+  - -n
 xout_manager_async_timeout: 900
 xout_manager_max_wait: 180
 xout_module_state_file: /var/tmp/xmanager-portal-modules.json
