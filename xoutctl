@@ -262,13 +262,14 @@ run_playbook() {
     callback_path="$callback_path:$ANSIBLE_CALLBACK_PLUGINS"
   fi
 
-  # Keep controller-wide callbacks intact, but remove only the characteristic
-  # one-line profile_tasks timestamp output from the compact operator view.
-  # profile_tasks may write to stderr, so merge both streams before filtering.
-  # set -o pipefail preserves the real ansible-playbook return code.
+  # Keep controller-wide callbacks intact, but remove only profile_tasks timing
+  # lines from the compact operator view. The match intentionally starts at the
+  # clock/timezone portion rather than column 1 so terminal ANSI color prefixes
+  # or locale-specific weekday/month names cannot defeat it. stderr is merged
+  # because profile_tasks may write there. set -o pipefail preserves Ansible rc.
   ANSIBLE_STDOUT_CALLBACK=xout_compact \
   ANSIBLE_CALLBACK_PLUGINS="$callback_path" \
-    "${cmd[@]}" 2>&1 | sed -E '/^[^[:space:]]+ [0-9]{1,2} [^[:space:]]+ [0-9]{4}  [0-9]{2}:[0-9]{2}:[0-9]{2} [+-][0-9]{4} \([^)]*\)[[:space:]]+[0-9]+:[0-9]{2}:[0-9]{2}\.[0-9]{3}[[:space:]]+\*+$/d'
+    "${cmd[@]}" 2>&1 | sed -E '/[0-9]{2}:[0-9]{2}:[0-9]{2} [+-][0-9]{4} \([^)]*\)[[:space:]]+[0-9]+:[0-9]{2}:[0-9]{2}\.[0-9]{3}[[:space:]]+\*{5}/d'
 }
 
 run_for_environments() {
