@@ -10,6 +10,7 @@
         serviceflow_parallel_hosts: "{{ xout_parallel_hosts | bool }}"
         serviceflow_parallel_timeout: "{{ xout_serviceflow_parallel_timeout | int }}"
         serviceflow_become: "{{ xout_serviceflow_become | bool }}"
+        serviceflow_systemctl_prefix: "{{ xout_serviceflow_systemctl_prefix }}"
         serviceflow_show_plan: "{{ xout_show_plan | bool }}"
   rescue:
     - name: Return partially started environment to DOWN state
@@ -21,6 +22,7 @@
         serviceflow_parallel_hosts: "{{ xout_parallel_hosts | bool }}"
         serviceflow_parallel_timeout: "{{ xout_serviceflow_parallel_timeout | int }}"
         serviceflow_become: "{{ xout_serviceflow_become | bool }}"
+        serviceflow_systemctl_prefix: "{{ xout_serviceflow_systemctl_prefix }}"
         serviceflow_show_plan: false
 
     - name: Report failed XOUT start
