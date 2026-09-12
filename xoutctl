@@ -36,9 +36,10 @@ ACTION:
 Output:
   Compact operator output is the default. It shows the effective package plan,
   lifecycle phases, status, warnings/failures and the final result while hiding
-  routine Ansible task/loop/skip noise.
+  routine Ansible task/loop/skip/timing noise.
 
-  --verbose restores the native full Ansible output for troubleshooting.
+  --verbose restores the native full Ansible output for troubleshooting,
+  including callbacks configured by the controller's Ansible configuration.
 
   Examples:
     ./xoutctl NDS_PROD status
@@ -121,9 +122,6 @@ Typical workflow:
   # update/start/restart perform a final postcheck of XOUT services, boot policy,
   # CUPS, Portal/Jolokia/module-state cleanup and Pegasus.
 
-  # Full native Ansible output for troubleshooting
-  ./xoutctl NDS_TEST restart --verbose
-
   # Skip the wrapper confirmation (internal UDU prompt is not bypassed)
   ./xoutctl NDS_TEST restart --yes
 
@@ -141,7 +139,6 @@ Examples:
   ./xoutctl NDS_TEST stop
   ./xoutctl NDS_TEST start
   ./xoutctl NDS_TEST restart
-  ./xoutctl NDS_TEST restart --verbose
 EOF
 }
 
@@ -265,8 +262,13 @@ run_playbook() {
     callback_path="$callback_path:$ANSIBLE_CALLBACK_PLUGINS"
   fi
 
+  # Compact mode owns the console completely. In particular this overrides
+  # controller-wide aggregate callbacks such as profile_tasks that would add
+  # one timing line per task and defeat the compact operator view.
   ANSIBLE_STDOUT_CALLBACK=xout_compact \
   ANSIBLE_CALLBACK_PLUGINS="$callback_path" \
+  ANSIBLE_CALLBACKS_ENABLED= \
+  ANSIBLE_CALLBACK_WHITELIST= \
     "${cmd[@]}"
 }
 
