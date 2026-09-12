@@ -26,7 +26,9 @@
 
 - name: Detect optional UDU delivery
   ansible.builtin.include_tasks: udu_check.yml
-  when: xout_action in ['plan', 'install', 'update']
+  when:
+    - xout_action in ['plan', 'install', 'update']
+    - xout_component | default('') | length == 0
 
 - name: Show UDU planning result
   ansible.builtin.debug:
@@ -34,6 +36,17 @@
       UDU: {{ 'manual installation required' if xout_udu_required | bool else 'not present for this delivery' }}
   when:
     - xout_action in ['plan', 'install', 'update']
+    - xout_component | default('') | length == 0
+    - xout_show_plan | bool
+
+- name: Show isolated component planning note
+  ansible.builtin.debug:
+    msg: >-
+      Isolated component mode: {{ xout_component }} only. UDU, Pegasus, Portal
+      module lifecycle, CUPS and unrelated XOUT services are outside this operation.
+  when:
+    - xout_action in ['plan', 'update']
+    - xout_component | default('') | length > 0
     - xout_show_plan | bool
 
 - name: Show XOUT environment status
@@ -50,7 +63,9 @@
 
 - name: Detect whether update continues an already stopped maintenance window
   ansible.builtin.include_tasks: update_state.yml
-  when: xout_action == 'update'
+  when:
+    - xout_action == 'update'
+    - xout_component | default('') | length == 0
 
 - name: Validate install precondition
   ansible.builtin.include_tasks: install_precheck.yml
@@ -66,9 +81,10 @@
       }}
   when: xout_action in ['install', 'update']
 
-- name: Execute XOUT update workflow
+- name: Execute full XOUT update workflow
   when:
     - xout_action == 'update'
+    - xout_component | default('') | length == 0
     - xout_maintenance_required | bool
   block:
     - name: Disable Pegasus before maintenance
@@ -107,18 +123,46 @@
     - name: Enforce disabled boot policy
       ansible.builtin.include_tasks: ensure_disabled.yml
 
+- name: Execute isolated component update workflow
+  when:
+    - xout_action == 'update'
+    - xout_component | default('') | length > 0
+    - xout_maintenance_required | bool
+  block:
+    - name: Stop selected component only
+      ansible.builtin.include_tasks: serviceflow_stop.yml
+      vars:
+        xout_lifecycle_services: "{{ xout_operation_serviceflow_services }}"
+
+    - name: Apply selected component RPM changes
+      ansible.builtin.include_tasks: package_apply.yml
+
+    - name: Start selected component only
+      ansible.builtin.include_tasks: serviceflow_start.yml
+      vars:
+        xout_lifecycle_services: "{{ xout_operation_serviceflow_services }}"
+
+    - name: Verify isolated component result
+      ansible.builtin.include_tasks: component_postcheck.yml
+      when: xout_postcheck_enabled | bool
+
 - name: Report update with no maintenance changes
   ansible.builtin.debug:
     msg: >-
-      No RPM changes and no UDU delivery were detected. XOUT lifecycle was not changed.
+      {{
+        ('No RPM change was detected for component ' ~ xout_component ~ '. Its lifecycle was not changed.')
+        if xout_component | default('') | length > 0
+        else 'No RPM changes and no UDU delivery were detected. XOUT lifecycle was not changed.'
+      }}
   when:
     - xout_action == 'update'
     - not xout_maintenance_required | bool
 
-- name: Keep CUPS running after update check
+- name: Keep CUPS running after full update check
   ansible.builtin.include_tasks: cups.yml
   when:
     - xout_action == 'update'
+    - xout_component | default('') | length == 0
     - not xout_maintenance_required | bool
 
 - name: Execute XOUT install workflow
@@ -219,10 +263,11 @@
     - name: Enforce disabled boot policy
       ansible.builtin.include_tasks: ensure_disabled.yml
 
-- name: Verify final XOUT runtime state
+- name: Verify final full XOUT runtime state
   ansible.builtin.include_tasks: postcheck.yml
   when:
     - xout_postcheck_enabled | bool
+    - xout_component | default('') | length == 0
     - xout_action in ['install', 'update', 'start', 'restart']
 
 - name: Show final XOUT status
