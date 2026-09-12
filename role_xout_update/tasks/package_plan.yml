@@ -9,18 +9,18 @@
       /var/tmp/xout-source-{{ xout_run_id }}-{{ xout_release_file | basename }}
   when: xout_release_file | length > 0
 
-- name: Copy requested release file to XOUT hosts
+- name: Copy requested release file to operation hosts
   ansible.builtin.copy:
     src: "{{ xout_release_file }}"
     dest: "{{ xout_remote_source_release }}"
     mode: '0600'
   delegate_to: "{{ item }}"
-  loop: "{{ xout_target_hosts }}"
+  loop: "{{ xout_operation_hosts }}"
   loop_control:
     label: "{{ item }}"
   when: xout_release_file | length > 0
 
-- name: Launch package preflight on all XOUT hosts
+- name: Launch package preflight on operation hosts
   ansible.builtin.command:
     argv: >-
       {{
@@ -34,7 +34,7 @@
           'package-plan'
         ]
         + (
-            xout_host_packages[xout_plan_host]
+            ([xout_component] if (xout_component | default('') | length > 0) else xout_host_packages[xout_plan_host])
             | map('regex_replace', '^', '--package=')
             | list
           )
@@ -45,7 +45,7 @@
         + (['--allow-downgrade'] if xout_allow_downgrade | bool else [])
       }}
   delegate_to: "{{ xout_plan_host }}"
-  loop: "{{ xout_target_hosts }}"
+  loop: "{{ xout_operation_hosts }}"
   loop_control:
     loop_var: xout_plan_host
     label: "{{ xout_plan_host }}"
@@ -96,7 +96,7 @@
     path: "{{ xout_remote_source_release }}"
     state: absent
   delegate_to: "{{ item }}"
-  loop: "{{ xout_target_hosts }}"
+  loop: "{{ xout_operation_hosts }}"
   loop_control:
     label: "{{ item }}"
   when: xout_release_file | length > 0
@@ -106,10 +106,11 @@
     msg: |-
       XOUT PLAN - {{ xout_effective_environment }}
       Target mode: {{ 'release file ' ~ xout_release_file if xout_release_file | length > 0 else 'latest from repository' }}
+      Scope: {{ 'component ' ~ xout_component if xout_component | default('') | length > 0 else 'full environment' }}
       Downgrade allowed: {{ xout_allow_downgrade | bool }}
 
       PACKAGE PLAN
-      {% for host in xout_target_hosts %}
+      {% for host in xout_operation_hosts %}
       {{ host }}
       {% if host in xout_package_plans %}
       {% for package in xout_package_plans[host].packages %}
@@ -121,13 +122,13 @@
       {% endfor %}
 
       START ORDER
-      {% for service in xout_serviceflow_services %}
-        {{ loop.index }}. {{ service.name }} -> {{ groups[service.groups[0]] | join(', ') }}
+      {% for service in xout_operation_serviceflow_services %}
+        {{ loop.index }}. {{ service.name }} -> {{ xout_operation_hosts | join(', ') }}
       {% endfor %}
 
       STOP ORDER
-      {% for service in xout_serviceflow_services | reverse %}
-        {{ loop.index }}. {{ service.name }} -> {{ groups[service.groups[0]] | join(', ') }}
+      {% for service in xout_operation_serviceflow_services | reverse %}
+        {{ loop.index }}. {{ service.name }} -> {{ xout_operation_hosts | join(', ') }}
       {% endfor %}
   when: xout_show_plan | bool
 
@@ -147,7 +148,7 @@
 - name: Collect hosts with real package changes
   ansible.builtin.set_fact:
     xout_change_hosts: "{{ xout_change_hosts + [item] }}"
-  loop: "{{ xout_target_hosts }}"
+  loop: "{{ xout_operation_hosts }}"
   when: xout_package_plans[item].has_changes | bool
 
 - name: Create exact execution target files
