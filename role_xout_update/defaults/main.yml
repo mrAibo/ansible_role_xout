@@ -21,4 +21,7 @@ xout_check_udu: true
 xout_udu_root: /software/Xout/01_Releases
 xout_udu_version: "{{ INSTALLVERSION | default('') }}"
 xout_check_cups: true
+# Batchsplitter may remain enabled for boot; all other XOUT components stay strict.
+xout_boot_disable_exempt_components:
+  - batchsplitter
 xout_properties_file: /ansible/XOUT/install.properties
