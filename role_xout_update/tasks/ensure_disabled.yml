@@ -13,4 +13,21 @@
   loop: "{{ xout_target_hosts }}"
   loop_control:
     label: "{{ item }}"
+  register: xout_disable_boot_policy
   changed_when: false
+  failed_when:
+    - xout_action != 'stop'
+    - xout_disable_boot_policy.rc != 0
+
+- name: Warn about boot autostart that could not be disabled after standalone stop
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: Boot autostart could not be disabled on {{ item.item }}.
+      XOUT services were already stopped; review sudoers/boot policy before a
+      reboot. Detail: {{ item.stderr | default(item.stdout | default('')) | trim }}
+  loop: "{{ xout_disable_boot_policy.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when:
+    - xout_action == 'stop'
+    - item.rc | default(0) != 0
