@@ -5,6 +5,11 @@ xout_manager_path: /work/dms/rollout/xmanager.py
 xout_manager_lock_file: /tmp/xmanager-xout-adm.lock
 xout_release_file: ""
 xout_allow_downgrade: false
+xout_component: ""
+# Components proven safe to stop/update/start without bouncing the full environment.
+# Extend this list only after operational dependency validation.
+xout_isolated_update_components:
+  - web
 xout_show_plan: true
 xout_parallel_hosts: true
 xout_serviceflow_parallel_timeout: 300
