@@ -6,19 +6,19 @@
         name: mraibo.serviceflow.lifecycle
       vars:
         serviceflow_action: start
-        serviceflow_services: "{{ xout_serviceflow_services }}"
+        serviceflow_services: "{{ xout_lifecycle_services | default(xout_serviceflow_services) }}"
         serviceflow_parallel_hosts: "{{ xout_parallel_hosts | bool }}"
         serviceflow_parallel_timeout: "{{ xout_serviceflow_parallel_timeout | int }}"
         serviceflow_become: "{{ xout_serviceflow_become | bool }}"
         serviceflow_systemctl_prefix: "{{ xout_serviceflow_systemctl_prefix }}"
         serviceflow_show_plan: "{{ xout_show_plan | bool }}"
   rescue:
-    - name: Return partially started environment to DOWN state
+    - name: Return partially started lifecycle scope to DOWN state
       ansible.builtin.include_role:
         name: mraibo.serviceflow.lifecycle
       vars:
         serviceflow_action: stop
-        serviceflow_services: "{{ xout_serviceflow_services }}"
+        serviceflow_services: "{{ xout_lifecycle_services | default(xout_serviceflow_services) }}"
         serviceflow_parallel_hosts: "{{ xout_parallel_hosts | bool }}"
         serviceflow_parallel_timeout: "{{ xout_serviceflow_parallel_timeout | int }}"
         serviceflow_become: "{{ xout_serviceflow_become | bool }}"
@@ -28,6 +28,9 @@
     - name: Report failed XOUT start
       ansible.builtin.fail:
         msg: >-
-          XOUT start/readiness failed. ServiceFlow returned the environment to
-          DOWN state. Portal module state and Pegasus state are intentionally
-          left for a later recovery start.
+          XOUT start/readiness failed. ServiceFlow returned the selected lifecycle
+          scope to DOWN state. {{
+            'The rest of the XOUT environment was not intentionally changed.'
+            if xout_component | default('') | length > 0
+            else 'Portal module state and Pegasus state are intentionally left for a later recovery start.'
+          }}
