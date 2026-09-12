@@ -19,6 +19,8 @@ xout_serviceflow_systemctl_prefix:
   - -n
 xout_manager_async_timeout: 900
 xout_manager_max_wait: 180
+# Read-only status probes are launched concurrently on all XOUT hosts.
+xout_status_async_timeout: 30
 xout_module_state_file: /var/tmp/xmanager-portal-modules.json
 xout_postcheck_enabled: true
 xout_manage_pegasus: true
