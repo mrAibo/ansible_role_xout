@@ -55,7 +55,11 @@
         fail_msg: >-
           Package apply failed on {{ item.xout_apply_job.xout_apply_host }}.
           rc={{ item.rc | default('unknown') }} stderr={{ item.stderr | default('') }}.
-          The XOUT environment intentionally remains DOWN.
+          {{
+            ('Component ' ~ xout_component ~ ' intentionally remains DOWN; other XOUT components were not intentionally changed.')
+            if xout_component | default('') | length > 0
+            else 'The XOUT environment intentionally remains DOWN.'
+          }}
       loop: "{{ xout_apply_wait.results }}"
       loop_control:
         label: "{{ item.xout_apply_job.xout_apply_host }}"
