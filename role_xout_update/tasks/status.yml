@@ -1,5 +1,5 @@
 ---
-- name: Read XOUT status from every host
+- name: Launch XOUT status probes in parallel
   ansible.builtin.command:
     argv:
       - "{{ xout_python_path }}"
@@ -10,8 +10,23 @@
   loop: "{{ xout_target_hosts }}"
   loop_control:
     label: "{{ item }}"
+  async: "{{ xout_status_async_timeout | int }}"
+  poll: 0
   changed_when: false
+  register: xout_status_jobs
+
+- name: Collect XOUT status probe results
+  ansible.builtin.async_status:
+    jid: "{{ item.ansible_job_id }}"
+  delegate_to: "{{ item.item }}"
+  loop: "{{ xout_status_jobs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
   register: xout_status_results
+  until: xout_status_results.finished | bool
+  retries: "{{ xout_status_async_timeout | int }}"
+  delay: 1
+  changed_when: false
 
 - name: Initialize Pegasus status label
   ansible.builtin.set_fact:
@@ -30,7 +45,7 @@
       XOUT STATUS - {{ xout_effective_environment }}
       {% for result in xout_status_results.results %}
 
-      {{ result.item }}
+      {{ result.item.item }}
       {% for service in result.stdout | from_json %}
         {{ '%-27s' | format(service.name) }} {{ '%-10s' | format(service.active) }} enabled={{ service.enabled }} version={{ service.version }}
       {% endfor %}
