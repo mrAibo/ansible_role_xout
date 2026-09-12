@@ -131,6 +131,9 @@ jobs:
           export ANSIBLE_ROLES_PATH="$PWD"
           export ANSIBLE_STDOUT_CALLBACK=xout_compact
           export ANSIBLE_CALLBACK_PLUGINS="$PWD/callback_plugins"
+          export ANSIBLE_CALLBACKS_ENABLED=
+          export ANSIBLE_CALLBACK_WHITELIST=
+
           ansible-playbook \
             -i tests/ci_inventory.ini \
             xout_update_role.yml \
@@ -148,3 +151,20 @@ jobs:
           grep -q '^  SUCCESS$' /tmp/compact-plan.txt
           ! grep -q '^TASK \[' /tmp/compact-plan.txt
           ! grep -q '^skipping:' /tmp/compact-plan.txt
+
+          ansible-playbook \
+            -i tests/ci_inventory.ini \
+            xout_update_role.yml \
+            -e xout_action=status \
+            -e "xout_manager_path=$PWD/tests/fake_xmanager.py" \
+            -e xout_properties_file= \
+            -e xout_manage_pegasus=false \
+            >/tmp/compact-status.txt
+          grep -q 'XOUT STATUS - CI_TEST' /tmp/compact-status.txt
+          grep -q 'Pegasus.*NOT MANAGED' /tmp/compact-status.txt
+          grep -q '\[OK\].*Status' /tmp/compact-status.txt
+          ! grep -q 'Pegasus OFF' /tmp/compact-status.txt
+          ! grep -q 'Pegasus ON' /tmp/compact-status.txt
+          ! grep -q 'Stop XOUT' /tmp/compact-status.txt
+          ! grep -q 'Start XOUT' /tmp/compact-status.txt
+          ! grep -q 'Preflight / package plan' /tmp/compact-status.txt
