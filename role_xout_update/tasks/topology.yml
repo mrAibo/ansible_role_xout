@@ -9,6 +9,16 @@
     xout_batchsplitter_hosts: "{{ groups.get('batchsplitter', []) | list }}"
     xout_oracle_hosts: "{{ groups.get('ora_db', []) | list }}"
 
+- name: Build component host map
+  ansible.builtin.set_fact:
+    xout_component_hosts:
+      modeshape: "{{ xout_modeshape_hosts }}"
+      activemq: "{{ xout_activemq_hosts }}"
+      pmc: "{{ xout_pmc_hosts }}"
+      portal: "{{ xout_portal_hosts }}"
+      web: "{{ xout_web_hosts }}"
+      batchsplitter: "{{ xout_batchsplitter_hosts }}"
+
 - name: Resolve all XOUT hosts
   ansible.builtin.set_fact:
     xout_target_hosts: >-
@@ -38,6 +48,7 @@
       found {{ xout_oracle_hosts | length }}.
   when:
     - xout_manage_pegasus | bool
+    - xout_component | default('') | length == 0
     - xout_action in ['install', 'update', 'start', 'stop', 'restart']
 
 - name: Initialize ServiceFlow service list
@@ -157,3 +168,24 @@
         )
       }}
   loop: "{{ xout_target_hosts }}"
+
+- name: Initialize operation topology
+  ansible.builtin.set_fact:
+    xout_operation_hosts: "{{ xout_target_hosts }}"
+    xout_operation_serviceflow_services: "{{ xout_serviceflow_services }}"
+
+- name: Scope operation topology to one component
+  ansible.builtin.set_fact:
+    xout_operation_hosts: "{{ xout_component_hosts[xout_component] | list }}"
+    xout_operation_serviceflow_services: >-
+      {{ xout_serviceflow_services | selectattr('name', 'equalto', xout_component) | list }}
+  when: xout_component | default('') | length > 0
+
+- name: Require hosts and lifecycle definition for isolated component
+  ansible.builtin.assert:
+    that:
+      - xout_operation_hosts | length > 0
+      - xout_operation_serviceflow_services | length == 1
+    fail_msg: >-
+      Component {{ xout_component }} has no usable host/lifecycle mapping in the selected inventory.
+  when: xout_component | default('') | length > 0
