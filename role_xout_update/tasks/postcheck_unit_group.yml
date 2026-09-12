@@ -30,3 +30,6 @@
   failed_when: >-
     (xout_postcheck_enabled.stdout | trim) in ['enabled', 'enabled-runtime']
     or (xout_postcheck_enabled.stdout | trim) == ''
+  when: >-
+    xout_postcheck_group.name
+    not in (xout_boot_disable_exempt_components | default([]))
