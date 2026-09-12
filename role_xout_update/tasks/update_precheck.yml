@@ -1,7 +1,7 @@
 ---
 - name: Validate installed package topology for update hosts
   ansible.builtin.include_tasks: update_precheck_host.yml
-  loop: "{{ xout_target_hosts }}"
+  loop: "{{ xout_operation_hosts }}"
   loop_control:
     loop_var: xout_update_check_host
     label: "{{ xout_update_check_host }}"
