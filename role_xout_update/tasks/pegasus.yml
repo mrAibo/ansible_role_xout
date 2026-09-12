@@ -1,9 +1,11 @@
 ---
 - name: Set Pegasus active={{ xout_pegasus_active | int }}
-  ansible.builtin.shell: |
-    set -o pipefail
-    {{ hostvars[xout_oracle_hosts[0]].sql_plus }} -S \
-      {{ hostvars[xout_oracle_hosts[0]].oracle_user }}/{{ hostvars[xout_oracle_hosts[0]].oracle_pass }}@{{ hostvars[xout_oracle_hosts[0]].oracle_sid }} <<'SQL'
+  ansible.builtin.raw: |
+    export ORACLE_HOME={{ hostvars[xout_oracle_hosts[0]].oracle_home | quote }}
+    export ORACLE_SID={{ hostvars[xout_oracle_hosts[0]].oracle_sid | quote }}
+    export PATH="$ORACLE_HOME/bin:$PATH"
+    {{ hostvars[xout_oracle_hosts[0]].sql_plus | quote }} -S \
+      {{ (hostvars[xout_oracle_hosts[0]].oracle_user ~ '/' ~ hostvars[xout_oracle_hosts[0]].oracle_pass ~ '@' ~ hostvars[xout_oracle_hosts[0]].oracle_sid) | quote }} <<'SQL'
     WHENEVER SQLERROR EXIT SQL.SQLCODE
     SET PAGESIZE 0 FEEDBACK ON VERIFY OFF HEADING OFF ECHO OFF
     UPDATE pegasus_plugins
@@ -13,13 +15,30 @@
     COMMIT;
     EXIT;
     SQL
-  args:
-    executable: /bin/bash
-  environment:
-    ORACLE_HOME: "{{ hostvars[xout_oracle_hosts[0]].oracle_home }}"
-    ORACLE_SID: "{{ hostvars[xout_oracle_hosts[0]].oracle_sid }}"
   delegate_to: "{{ xout_oracle_hosts[0] }}"
   register: xout_pegasus_sql
-  changed_when: true
+  changed_when: xout_pegasus_sql.rc | default(1) == 0
+  failed_when: false
   no_log: true
   when: xout_manage_pegasus | bool
+
+- name: Fail when Pegasus SQL command failed
+  ansible.builtin.fail:
+    msg: >-
+      Pegasus SQL failed on {{ xout_oracle_hosts[0] }}
+      (rc={{ xout_pegasus_sql.rc | default('unknown') }}).
+      {{
+        (
+          (
+            (xout_pegasus_sql.stdout | default(''))
+            ~ '\n'
+            ~ (xout_pegasus_sql.stderr | default(''))
+          )
+          | regex_findall('(?m)^(?:ORA-|TNS-|SP2-).*$')
+          | join('; ')
+        )
+        or 'No ORA/TNS/SP2 detail returned.'
+      }}
+  when:
+    - xout_manage_pegasus | bool
+    - xout_pegasus_sql.rc | default(1) != 0
