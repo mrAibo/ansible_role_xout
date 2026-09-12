@@ -15,7 +15,9 @@
               'package-apply'
             ]
             + (
-                xout_host_packages[xout_apply_host]
+                xout_package_plans[xout_apply_host].packages
+                | selectattr('action', 'in', ['install', 'upgrade', 'downgrade'])
+                | map(attribute='package')
                 | map('regex_replace', '^', '--package=')
                 | list
               )
