@@ -1,4 +1,5 @@
 ---
 collections:
-  - name: mraibo.serviceflow
-    version: "0.3.0"
+  - name: https://github.com/mrAibo/ansible_serviceflow.git
+    type: git
+    version: 0b76576e0e45a142b36f0eb0ef421a085c4ccb73
