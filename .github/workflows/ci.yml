@@ -16,8 +16,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Compile xmanager
-        run: python -m py_compile xmanager.py
+      - name: Compile xmanager and compact callback
+        run: |
+          python -m py_compile xmanager.py
+          python -m py_compile callback_plugins/xout_compact.py
       - name: Run unit tests
         run: python -m unittest discover -s tests -p 'test_xmanager.py' -v
       - name: Verify CLI help
@@ -46,21 +48,26 @@ jobs:
           ansible-galaxy collection install \
             "git+https://github.com/mrAibo/ansible_serviceflow.git,main" \
             -p collections --force
-      - name: Validate wrapper syntax, component option and interactive multi-selection
+      - name: Validate wrapper syntax, output modes, component option and interactive multi-selection
         shell: bash
         run: |
           set -euo pipefail
           bash -n xoutctl
           ./xoutctl --help >/tmp/xoutctl-help.txt
           grep -q -- '--component COMPONENT' /tmp/xoutctl-help.txt
+          grep -q -- '--verbose' /tmp/xoutctl-help.txt
           printf '1,4,5\n1\n' | ANSIBLE_PLAYBOOK=/bin/true ./xoutctl >/tmp/xoutctl-menu.txt
           grep -q -- '- HB_TEST (HB_TEST_XOUT.ini)' /tmp/xoutctl-menu.txt
           grep -q -- '- NDS_TEST (NDS_TEST_XOUT.ini)' /tmp/xoutctl-menu.txt
           grep -q -- '- NDS_MIGRATION (NDS_MIG_XOUT.ini)' /tmp/xoutctl-menu.txt
           grep -q 'Action       : status' /tmp/xoutctl-menu.txt
+          grep -q 'Output       : compact' /tmp/xoutctl-menu.txt
           ANSIBLE_PLAYBOOK=/bin/true ./xoutctl NDS_TEST plan --component web >/tmp/xoutctl-component.txt
           grep -q 'Component    : web' /tmp/xoutctl-component.txt
-          grep -q 'xout_component=web' /tmp/xoutctl-component.txt
+          grep -q 'Output       : compact' /tmp/xoutctl-component.txt
+          ANSIBLE_PLAYBOOK=/bin/true ./xoutctl NDS_TEST plan --component web --verbose >/tmp/xoutctl-verbose.txt
+          grep -q 'Output       : verbose' /tmp/xoutctl-verbose.txt
+          grep -q '^Command:' /tmp/xoutctl-verbose.txt
       - name: Validate inventories and playbook syntax
         shell: bash
         run: |
@@ -116,3 +123,28 @@ jobs:
           ! grep -q 'xout-modeshape.*\[upgrade\]' /tmp/component-plan.txt
           ! grep -q 'xout-portal.*\[upgrade\]' /tmp/component-plan.txt
           grep -q '1. web -> ci_web1, ci_portal2' /tmp/component-plan.txt
+      - name: Validate compact callback acceptance output
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ANSIBLE_COLLECTIONS_PATH="$PWD/collections"
+          export ANSIBLE_ROLES_PATH="$PWD"
+          export ANSIBLE_STDOUT_CALLBACK=xout_compact
+          export ANSIBLE_CALLBACK_PLUGINS="$PWD/callback_plugins"
+          ansible-playbook \
+            -i tests/ci_inventory.ini \
+            xout_update_role.yml \
+            -e xout_action=plan \
+            -e xout_component=web \
+            -e "xout_manager_path=$PWD/tests/fake_xmanager.py" \
+            -e xout_properties_file= \
+            -e xout_check_udu=false \
+            -e xout_show_plan=true \
+            >/tmp/compact-plan.txt
+          grep -q 'XOUT PLAN - CI_TEST' /tmp/compact-plan.txt
+          grep -q 'Scope: component web' /tmp/compact-plan.txt
+          grep -q '\[CHANGE\].*xout-web.*1.0-1 -> 1.1-1.*UPGRADE' /tmp/compact-plan.txt
+          grep -q '^RESULT$' /tmp/compact-plan.txt
+          grep -q '^  SUCCESS$' /tmp/compact-plan.txt
+          ! grep -q '^TASK \[' /tmp/compact-plan.txt
+          ! grep -q '^skipping:' /tmp/compact-plan.txt
