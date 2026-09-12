@@ -114,12 +114,21 @@ class CallbackModule(CallbackBase):
         self._phase_failed = False
         self._display.display(f"  [...]  {label}")
 
-    def v2_playbook_on_task_start(self, task: Any, is_conditional: bool) -> None:
-        label = self._phase_label(self._task_name(task))
+    def _start_result_phase(self, result: Any) -> None:
+        """Start a phase only after Ansible actually executed its include/task.
+
+        v2_playbook_on_task_start fires before ``when`` evaluation, so using it
+        would render phases for skipped workflows (for example Pegasus OFF during
+        a read-only status action). Runner result callbacks occur after condition
+        evaluation and therefore reflect real execution.
+        """
+        label = self._phase_label(self._task_name(result._task))
         if label:
             self._start_phase(label)
 
     def v2_runner_on_ok(self, result: Any) -> None:
+        self._start_result_phase(result)
+
         task = result._task
         action = str(getattr(task, "action", ""))
         if not action.endswith("debug"):
@@ -136,6 +145,7 @@ class CallbackModule(CallbackBase):
             self._display.display(self._compact_whitespace(text))
 
     def v2_runner_on_failed(self, result: Any, ignore_errors: bool = False) -> None:
+        self._start_result_phase(result)
         if ignore_errors:
             self._display.display(
                 f"  [WARN] {self._task_name(result._task)} - {self._result_host(result)}"
@@ -153,6 +163,7 @@ class CallbackModule(CallbackBase):
         self._show_failure_detail(result)
 
     def v2_runner_on_unreachable(self, result: Any) -> None:
+        self._start_result_phase(result)
         self._had_failure = True
         if self._phase is not None and not self._phase_failed:
             self._display.display(f"  [FAIL] {self._phase}")
