@@ -7,6 +7,17 @@
       Unsupported xout_action={{ xout_action }}. Allowed: status, plan, install,
       update, start, stop, restart.
 
+- name: Validate isolated component update request
+  ansible.builtin.assert:
+    that:
+      - xout_action in ['plan', 'update']
+      - xout_component in xout_isolated_update_components
+    fail_msg: >-
+      Isolated component mode is only supported for plan/update and only for
+      components explicitly listed in xout_isolated_update_components.
+      Requested component={{ xout_component | default('') }}; allowed={{ xout_isolated_update_components | join(', ') }}.
+  when: xout_component | default('') | length > 0
+
 - name: Verify ServiceFlow 0.3.1 is installed on the controller
   ansible.builtin.command:
     argv:
