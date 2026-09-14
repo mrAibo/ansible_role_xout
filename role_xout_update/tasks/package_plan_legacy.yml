@@ -1,0 +1,172 @@
+---
+- name: Create unique package-plan run id
+  ansible.builtin.set_fact:
+    xout_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}-{{ 1000000 | random }}"
+
+- name: Set remote source release file path
+  ansible.builtin.set_fact:
+    xout_remote_source_release: >-
+      /var/tmp/xout-source-{{ xout_run_id }}-{{ xout_release_file | basename }}
+  when: xout_release_file | length > 0
+
+- name: Copy requested release file to operation hosts
+  ansible.builtin.copy:
+    src: "{{ xout_release_file }}"
+    dest: "{{ xout_remote_source_release }}"
+    mode: '0600'
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  when: xout_release_file | length > 0
+
+- name: Launch package preflight on operation hosts
+  ansible.builtin.command:
+    argv: >-
+      {{
+        [
+          xout_python_path,
+          xout_manager_path,
+          '--json',
+          '--non-interactive',
+          '--lock-file=' ~ xout_manager_lock_file,
+          '--max-wait=' ~ (xout_manager_max_wait | string),
+          'package-plan'
+        ]
+        + (
+            ([xout_component] if (xout_component | default('') | length > 0) else xout_host_packages[xout_plan_host])
+            | map('regex_replace', '^', '--package=')
+            | list
+          )
+        + (
+            ['--release-file=' ~ xout_remote_source_release]
+            if xout_release_file | length > 0 else []
+          )
+        + (['--allow-downgrade'] if xout_allow_downgrade | bool else [])
+      }}
+  delegate_to: "{{ xout_plan_host }}"
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    loop_var: xout_plan_host
+    label: "{{ xout_plan_host }}"
+  async: "{{ xout_manager_async_timeout }}"
+  poll: 0
+  changed_when: false
+  register: xout_plan_jobs
+
+- name: Wait for package preflight jobs
+  ansible.builtin.async_status:
+    jid: "{{ xout_plan_job.ansible_job_id }}"
+  delegate_to: "{{ xout_plan_job.xout_plan_host }}"
+  loop: "{{ xout_plan_jobs.results }}"
+  loop_control:
+    loop_var: xout_plan_job
+    label: "{{ xout_plan_job.xout_plan_host }}"
+  register: xout_plan_wait
+  until: xout_plan_wait.finished | bool
+  retries: "{{ ((xout_manager_async_timeout | int) / 2) | round(0, 'ceil') | int + 1 }}"
+  delay: 2
+  failed_when: false
+  changed_when: false
+
+- name: Initialize aggregated package plans
+  ansible.builtin.set_fact:
+    xout_package_plans: {}
+    xout_change_hosts: []
+
+- name: Parse successful package plans
+  ansible.builtin.set_fact:
+    xout_package_plans: >-
+      {{
+        xout_package_plans | combine(
+          {
+            item.xout_plan_job.xout_plan_host: (item.stdout | from_json)
+          }
+        )
+      }}
+  loop: "{{ xout_plan_wait.results }}"
+  loop_control:
+    label: "{{ item.xout_plan_job.xout_plan_host }}"
+  when:
+    - item.stdout | default('') | trim | length > 0
+    - item.stdout | trim is match('^\\{')
+
+- name: Remove temporary source release file after planning
+  ansible.builtin.file:
+    path: "{{ xout_remote_source_release }}"
+    state: absent
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  when: xout_release_file | length > 0
+
+- name: Display package and lifecycle plan
+  ansible.builtin.debug:
+    msg: |-
+      XOUT PLAN - {{ xout_effective_environment }}
+      Target mode: {{ 'release file ' ~ xout_release_file if xout_release_file | length > 0 else 'latest from repository' }}
+      Scope: {{ 'component ' ~ xout_component if xout_component | default('') | length > 0 else 'full environment' }}
+      Downgrade allowed: {{ xout_allow_downgrade | bool }}
+
+      PACKAGE PLAN
+      {% for host in xout_operation_hosts %}
+      {{ host }}
+      {% if host in xout_package_plans %}
+      {% for package in xout_package_plans[host].packages %}
+        {{ '%-27s' | format(package.package) }} {{ package.installed | default('-', true) }} -> {{ package.target | default('-', true) }} [{{ package.action }}]
+      {% endfor %}
+      {% else %}
+        PRECHECK FAILED - no parseable plan returned
+      {% endif %}
+      {% endfor %}
+
+      START ORDER
+      {% for service in xout_operation_serviceflow_services %}
+        {{ loop.index }}. {{ service.name }} -> {{ (service.groups | map('extract', groups) | list | flatten | unique | list) | join(', ') }}
+      {% endfor %}
+
+      STOP ORDER
+      {% for service in xout_operation_serviceflow_services | reverse %}
+        {{ loop.index }}. {{ service.name }} -> {{ (service.groups | map('extract', groups) | list | flatten | unique | list) | join(', ') }}
+      {% endfor %}
+  when: xout_show_plan | bool
+
+- name: Fail before lifecycle changes when any host preflight failed
+  ansible.builtin.assert:
+    that:
+      - item.rc | default(1) == 0
+      - item.xout_plan_job.xout_plan_host in xout_package_plans
+      - not xout_package_plans[item.xout_plan_job.xout_plan_host].has_errors
+    fail_msg: >-
+      Package preflight failed on {{ item.xout_plan_job.xout_plan_host }}.
+      rc={{ item.rc | default('unknown') }} stderr={{ item.stderr | default('') }}
+  loop: "{{ xout_plan_wait.results }}"
+  loop_control:
+    label: "{{ item.xout_plan_job.xout_plan_host }}"
+
+- name: Collect hosts with real package changes
+  ansible.builtin.set_fact:
+    xout_change_hosts: "{{ xout_change_hosts + [item] }}"
+  loop: "{{ xout_operation_hosts }}"
+  when: xout_package_plans[item].has_changes | bool
+
+- name: Create exact execution target files
+  ansible.builtin.copy:
+    dest: "/var/tmp/xout-execution-{{ xout_run_id }}.ini"
+    mode: '0600'
+    content: |-
+      [release]
+      name=Execution_{{ xout_run_id }}
+
+      [packages]
+      {% for package in xout_package_plans[item].packages %}
+      {% if package.action in ['install', 'upgrade', 'downgrade'] %}
+      {{ package.package }}={{ package.target }}
+      {% endif %}
+      {% endfor %}
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_change_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  when: xout_action in ['install', 'update']
