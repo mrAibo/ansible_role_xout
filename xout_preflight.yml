@@ -1,0 +1,127 @@
+---
+- name: Collect XOUT package preflight on component hosts
+  hosts: "modeshape:activemq:pmc:portal:web:tobi:batchsplitter"
+  gather_facts: false
+  vars_files:
+    - role_xout_update/defaults/main.yml
+  tasks:
+    - name: Resolve local package-plan scope
+      ansible.builtin.set_fact:
+        xout_preflight_components: >-
+          {{
+            (['modeshape'] if 'modeshape' in group_names else [])
+            + (['activemq'] if 'activemq' in group_names else [])
+            + (['pmc'] if 'pmc' in group_names else [])
+            + (['portal'] if 'portal' in group_names else [])
+            + (['web'] if ('web' in group_names or 'tobi' in group_names) else [])
+            + (['batchsplitter'] if 'batchsplitter' in group_names else [])
+          }}
+        xout_preflight_selected: >-
+          {{
+            xout_action in ['plan', 'install', 'update']
+            and (
+              xout_component | default('') | length == 0
+              or xout_component in (
+                (['modeshape'] if 'modeshape' in group_names else [])
+                + (['activemq'] if 'activemq' in group_names else [])
+                + (['pmc'] if 'pmc' in group_names else [])
+                + (['portal'] if 'portal' in group_names else [])
+                + (['web'] if ('web' in group_names or 'tobi' in group_names) else [])
+                + (['batchsplitter'] if 'batchsplitter' in group_names else [])
+              )
+            )
+          }}
+
+    - name: Verify xmanager 3.x for package preflight
+      ansible.builtin.command:
+        argv:
+          - "{{ xout_python_path }}"
+          - "{{ xout_manager_path }}"
+          - --version
+      register: xout_preflight_version
+      changed_when: false
+      failed_when: >-
+        xout_preflight_version.rc != 0
+        or 'xmanager.py 3.' not in xout_preflight_version.stdout
+      when: xout_preflight_selected | bool
+
+    - name: Run package preflight on this host
+      when: xout_preflight_selected | bool
+      block:
+        - name: Create temporary release target
+          ansible.builtin.tempfile:
+            state: file
+            prefix: xout-source-
+            suffix: >-
+              {{
+                (xout_release_file | basename | regex_search('\.[^.]+$'))
+                | default('.ini', true)
+              }}
+          register: xout_preflight_release_tmp
+          when: xout_release_file | default('') | length > 0
+
+        - name: Copy requested release file to this host
+          ansible.builtin.copy:
+            src: "{{ xout_release_file }}"
+            dest: "{{ xout_preflight_release_tmp.path }}"
+            mode: '0600'
+          when: xout_release_file | default('') | length > 0
+
+        - name: Execute local package plan
+          ansible.builtin.command:
+            argv: >-
+              {{
+                [
+                  xout_python_path,
+                  xout_manager_path,
+                  '--json',
+                  '--non-interactive',
+                  '--lock-file=' ~ xout_manager_lock_file,
+                  '--max-wait=' ~ (xout_manager_max_wait | string),
+                  'package-plan'
+                ]
+                + (
+                    ([xout_component] if xout_component | default('') | length > 0 else xout_preflight_components)
+                    | map('regex_replace', '^', '--package=')
+                    | list
+                  )
+                + (
+                    ['--release-file=' ~ xout_preflight_release_tmp.path]
+                    if xout_release_file | default('') | length > 0 else []
+                  )
+                + (['--allow-downgrade'] if xout_allow_downgrade | bool else [])
+              }}
+          register: xout_preflight_raw
+          changed_when: false
+          failed_when: false
+
+        - name: Require parseable package preflight
+          ansible.builtin.assert:
+            that:
+              - xout_preflight_raw.rc == 0
+              - xout_preflight_raw.stdout | trim is match('^\\{')
+            fail_msg: >-
+              Package preflight failed on {{ inventory_hostname }}.
+              rc={{ xout_preflight_raw.rc | default('unknown') }}
+              stderr={{ xout_preflight_raw.stderr | default('') }}
+
+        - name: Store package preflight result
+          ansible.builtin.set_fact:
+            xout_preflight_plan: "{{ xout_preflight_raw.stdout | from_json }}"
+
+        - name: Require package preflight without plan errors
+          ansible.builtin.assert:
+            that:
+              - not xout_preflight_plan.has_errors
+            fail_msg: >-
+              Package preflight returned plan errors on {{ inventory_hostname }}:
+              {{ xout_preflight_plan.packages | selectattr('action', 'equalto', 'error') | list | to_json }}
+      always:
+        - name: Remove temporary release target
+          ansible.builtin.file:
+            path: "{{ xout_preflight_release_tmp.path }}"
+            state: absent
+          when:
+            - xout_release_file | default('') | length > 0
+            - xout_preflight_release_tmp is defined
+            - xout_preflight_release_tmp.path is defined
