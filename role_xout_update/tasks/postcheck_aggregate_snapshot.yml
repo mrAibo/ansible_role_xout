@@ -1,0 +1,90 @@
+---
+- name: Resolve final postcheck host lists
+  ansible.builtin.set_fact:
+    xout_final_postcheck_hosts: >-
+      {{
+        (
+          groups.get('modeshape', [])
+          + groups.get('activemq', [])
+          + groups.get('pmc', [])
+          + groups.get('portal', [])
+          + groups.get('web', [])
+          + groups.get('tobi', [])
+          + groups.get('batchsplitter', [])
+        ) | unique | list
+      }}
+    xout_final_postcheck_portal_hosts: "{{ groups.get('portal', []) | list }}"
+    xout_final_postcheck_oracle_hosts: "{{ groups.get('ora_db', []) | list }}"
+    xout_final_postcheck_service_components:
+      xout-modeshape: modeshape
+      xout-activemq-artemis: activemq
+      xout-pmc: pmc
+      xout-portal: portal
+      xout-web: web
+      xout-batchsplitter: batchsplitter
+
+- name: Initialize failed final postcheck host list
+  ansible.builtin.set_fact:
+    xout_final_postcheck_failed_hosts: []
+
+- name: Collect hosts without a completed final postcheck
+  ansible.builtin.set_fact:
+    xout_final_postcheck_failed_hosts: >-
+      {{ xout_final_postcheck_failed_hosts + [item] }}
+  loop: "{{ xout_final_postcheck_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  when: not (hostvars[item].xout_postcheck_host_ok | default(false) | bool)
+
+- name: Require every XOUT host to complete final postcheck
+  ansible.builtin.assert:
+    that:
+      - xout_final_postcheck_failed_hosts | length == 0
+    fail_msg: >-
+      Final XOUT postcheck did not complete successfully on:
+      {{ xout_final_postcheck_failed_hosts | join(', ') }}.
+      See the preceding host failure for details.
+
+- name: Initialize final Pegasus status label
+  ansible.builtin.set_fact:
+    xout_status_pegasus_label: >-
+      {{ 'UNKNOWN' if xout_manage_pegasus | bool else 'NOT MANAGED' }}
+
+- name: Read final managed Pegasus status
+  ansible.builtin.include_tasks: status_pegasus.yml
+  vars:
+    xout_oracle_hosts: "{{ xout_final_postcheck_oracle_hosts }}"
+  when:
+    - xout_manage_pegasus | bool
+    - xout_final_postcheck_oracle_hosts | length == 1
+
+- name: Require Pegasus active after full lifecycle
+  ansible.builtin.assert:
+    that:
+      - xout_status_pegasus_label == 'ACTIVE'
+    fail_msg: >-
+      Pegasus final postcheck failed: state={{ xout_status_pegasus_label }}.
+  when: xout_manage_pegasus | bool
+
+- name: Display final XOUT snapshot
+  ansible.builtin.debug:
+    msg: |-
+      XOUT STATUS - {{ xout_environment | default(hostvars[xout_final_postcheck_hosts[0]].xout_environment | default('selected inventory')) }}
+      {% for host in xout_final_postcheck_hosts %}
+      {{ host }}
+      {% for service_name in hostvars[host].xout_postcheck_expected_services | default([]) %}
+      {% set service = (hostvars[host].xout_postcheck_services | selectattr('name', 'equalto', service_name) | list | first) %}
+        {{ '%-27s' | format(service.name) }} {{ '%-10s' | format(service.active) }} enabled={{ service.enabled }} version={{ service.version }}{% if xout_final_postcheck_service_components[service.name] in (xout_boot_disable_exempt_components | default([])) and service.enabled in ['enabled', 'enabled-runtime'] %} [ALLOWED]{% endif %}
+      {% endfor %}
+      {% endfor %}
+      Pegasus                     {{ xout_status_pegasus_label }}
+      CUPS                        {{ 'ACTIVE on ' ~ (xout_final_postcheck_portal_hosts | length) ~ ' Portal hosts' if xout_check_cups | bool else 'NOT CHECKED' }}
+      Portal/Jolokia              OK on {{ xout_final_postcheck_portal_hosts | length }} Portal hosts
+      Portal module state         CLEAN
+
+- name: Report successful consolidated XOUT postcheck
+  ansible.builtin.debug:
+    msg: >-
+      XOUT postcheck passed: the final service snapshot is active, boot policy
+      matches configured exemptions, CUPS is healthy, Portal module state is
+      clean, Jolokia is reachable, and Pegasus is active.
