@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PLAYBOOK="${XOUT_PLAYBOOK:-$SCRIPT_DIR/xout_update_role.yml}"
+STATUS_PLAYBOOK="${XOUT_STATUS_PLAYBOOK:-$SCRIPT_DIR/xout_status.yml}"
 ANSIBLE_PLAYBOOK="${ANSIBLE_PLAYBOOK:-ansible-playbook}"
 
 declare -A INVENTORIES=(
@@ -232,7 +233,12 @@ set_environment() {
 
 run_playbook() {
   local action=$1
+  local selected_playbook="$PLAYBOOK"
   local -a extra_vars=("xout_action=$action" "xout_environment=$ENVIRONMENT")
+
+  if [[ "$action" == "status" ]]; then
+    selected_playbook="$STATUS_PLAYBOOK"
+  fi
   if [[ -n "$RELEASE_FILE" ]]; then
     extra_vars+=("xout_release_file=$RELEASE_FILE")
   fi
@@ -243,7 +249,7 @@ run_playbook() {
     extra_vars+=("xout_allow_downgrade=true")
   fi
 
-  local -a cmd=("$ANSIBLE_PLAYBOOK" -i "$INVENTORY" "$PLAYBOOK")
+  local -a cmd=("$ANSIBLE_PLAYBOOK" -i "$INVENTORY" "$selected_playbook")
   local item
   for item in "${extra_vars[@]}"; do
     cmd+=(-e "$item")
@@ -386,6 +392,11 @@ fi
   echo "Playbook not found: $PLAYBOOK" >&2
   exit 2
 }
+
+if [[ "$ACTION" == "status" && ! -f "$STATUS_PLAYBOOK" ]]; then
+  echo "Status playbook not found: $STATUS_PLAYBOOK" >&2
+  exit 2
+fi
 
 for environment in "${ENVIRONMENTS[@]}"; do
   [[ -n "${INVENTORIES[$environment]+x}" ]] || {
