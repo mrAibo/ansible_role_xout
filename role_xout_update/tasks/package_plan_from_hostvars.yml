@@ -1,0 +1,88 @@
+---
+- name: Create package-plan execution id
+  ansible.builtin.set_fact:
+    xout_run_id: "{{ now(utc=true, fmt='%Y%m%dT%H%M%SZ') }}-{{ 1000000 | random }}"
+
+- name: Initialize aggregated direct package plans
+  ansible.builtin.set_fact:
+    xout_package_plans: {}
+    xout_change_hosts: []
+
+- name: Require direct package plan from every operation host
+  ansible.builtin.assert:
+    that:
+      - hostvars[item].xout_preflight_plan is defined
+      - not hostvars[item].xout_preflight_plan.has_errors
+    fail_msg: >-
+      No valid direct package preflight is available for {{ item }}.
+      Package lifecycle changes are blocked before maintenance begins.
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Aggregate direct package plans
+  ansible.builtin.set_fact:
+    xout_package_plans: >-
+      {{
+        xout_package_plans | combine(
+          {item: hostvars[item].xout_preflight_plan}
+        )
+      }}
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Display package and lifecycle plan
+  ansible.builtin.debug:
+    msg: |-
+      XOUT PLAN - {{ xout_effective_environment }}
+      Target mode: {{ 'release file ' ~ xout_release_file if xout_release_file | length > 0 else 'latest from repository' }}
+      Scope: {{ 'component ' ~ xout_component if xout_component | default('') | length > 0 else 'full environment' }}
+      Downgrade allowed: {{ xout_allow_downgrade | bool }}
+
+      PACKAGE PLAN
+      {% for host in xout_operation_hosts %}
+      {{ host }}
+      {% for package in xout_package_plans[host].packages %}
+        {{ '%-27s' | format(package.package) }} {{ package.installed | default('-', true) }} -> {{ package.target | default('-', true) }} [{{ package.action }}]
+      {% endfor %}
+      {% endfor %}
+
+      START ORDER
+      {% for service in xout_operation_serviceflow_services %}
+        {{ loop.index }}. {{ service.name }} -> {{ (service.groups | map('extract', groups) | list | flatten | unique | list) | join(', ') }}
+      {% endfor %}
+
+      STOP ORDER
+      {% for service in xout_operation_serviceflow_services | reverse %}
+        {{ loop.index }}. {{ service.name }} -> {{ (service.groups | map('extract', groups) | list | flatten | unique | list) | join(', ') }}
+      {% endfor %}
+  when: xout_show_plan | bool
+
+- name: Collect hosts with direct package changes
+  ansible.builtin.set_fact:
+    xout_change_hosts: "{{ xout_change_hosts + [item] }}"
+  loop: "{{ xout_operation_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  when: xout_package_plans[item].has_changes | bool
+
+- name: Create exact execution target files
+  ansible.builtin.copy:
+    dest: "/var/tmp/xout-execution-{{ xout_run_id }}.ini"
+    mode: '0600'
+    content: |-
+      [release]
+      name=Execution_{{ xout_run_id }}
+
+      [packages]
+      {% for package in xout_package_plans[item].packages %}
+      {% if package.action in ['install', 'upgrade', 'downgrade'] %}
+      {{ package.package }}={{ package.target }}
+      {% endif %}
+      {% endfor %}
+  delegate_to: "{{ item }}"
+  loop: "{{ xout_change_hosts }}"
+  loop_control:
+    label: "{{ item }}"
+  when: xout_action in ['install', 'update']
