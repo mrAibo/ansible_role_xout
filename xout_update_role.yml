@@ -4,3 +4,23 @@
   gather_facts: false
   roles:
     - role: role_xout_update
+
+- name: Validate final XOUT state on component hosts
+  hosts: "modeshape:activemq:pmc:portal:web:tobi:batchsplitter"
+  gather_facts: false
+  vars_files:
+    - role_xout_update/defaults/main.yml
+  tasks:
+    - name: Run consolidated host postcheck
+      ansible.builtin.include_tasks: role_xout_update/tasks/postcheck_host_snapshot.yml
+      when: hostvars['localhost'].xout_run_consolidated_postcheck | default(false) | bool
+
+- name: Aggregate final XOUT postcheck and status
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - role_xout_update/defaults/main.yml
+  tasks:
+    - name: Run consolidated final postcheck
+      ansible.builtin.include_tasks: role_xout_update/tasks/postcheck_aggregate_snapshot.yml
+      when: xout_run_consolidated_postcheck | default(false) | bool
