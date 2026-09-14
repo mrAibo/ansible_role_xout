@@ -1,0 +1,70 @@
+---
+- name: Collect XOUT host status in parallel
+  hosts: "modeshape:activemq:pmc:portal:web:tobi:batchsplitter"
+  gather_facts: false
+  vars_files:
+    - role_xout_update/defaults/main.yml
+  tasks:
+    - name: Read local XOUT service status
+      ansible.builtin.command:
+        argv:
+          - "{{ xout_python_path }}"
+          - "{{ xout_manager_path }}"
+          - --json
+          - list
+      register: xout_status_raw
+      changed_when: false
+
+    - name: Store local XOUT service status
+      ansible.builtin.set_fact:
+        xout_status_services: "{{ xout_status_raw.stdout | from_json }}"
+      changed_when: false
+
+- name: Aggregate XOUT environment status
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - role_xout_update/defaults/main.yml
+  vars:
+    xout_status_hosts: >-
+      {{
+        (
+          groups.get('modeshape', [])
+          + groups.get('activemq', [])
+          + groups.get('pmc', [])
+          + groups.get('portal', [])
+          + groups.get('web', [])
+          + groups.get('tobi', [])
+          + groups.get('batchsplitter', [])
+        ) | unique | list
+      }}
+    xout_oracle_hosts: "{{ groups.get('ora_db', []) | list }}"
+  tasks:
+    - name: Require at least one XOUT host
+      ansible.builtin.assert:
+        that:
+          - xout_status_hosts | length > 0
+        fail_msg: No XOUT component hosts were found in the selected inventory.
+
+    - name: Initialize Pegasus status label
+      ansible.builtin.set_fact:
+        xout_status_pegasus_label: >-
+          {{ 'UNKNOWN' if xout_manage_pegasus | bool else 'NOT MANAGED' }}
+
+    - name: Read managed Pegasus status
+      ansible.builtin.include_tasks: role_xout_update/tasks/status_pegasus.yml
+      when:
+        - xout_manage_pegasus | bool
+        - xout_oracle_hosts | length == 1
+
+    - name: Show XOUT environment status
+      ansible.builtin.debug:
+        msg: |-
+          XOUT STATUS - {{ xout_environment | default(hostvars[xout_status_hosts[0]].xout_environment | default('selected inventory')) }}
+          {% for host in xout_status_hosts %}
+          {{ host }}
+          {% for service in hostvars[host].xout_status_services | default([]) %}
+            {{ '%-27s' | format(service.name) }} {{ '%-10s' | format(service.active) }} enabled={{ service.enabled }} version={{ service.version }}
+          {% endfor %}
+          {% endfor %}
+          Pegasus                     {{ xout_status_pegasus_label }}
