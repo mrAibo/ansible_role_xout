@@ -1,4 +1,6 @@
 ---
+- import_playbook: xout_preflight.yml
+
 - name: Orchestrate XOUT environment
   hosts: localhost
   gather_facts: false
