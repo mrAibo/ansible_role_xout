@@ -1,0 +1,126 @@
+---
+- name: Resolve expected XOUT services on this host
+  ansible.builtin.set_fact:
+    xout_postcheck_expected_services: >-
+      {{
+        (['xout-modeshape'] if 'modeshape' in group_names else [])
+        + (['xout-activemq-artemis'] if 'activemq' in group_names else [])
+        + (['xout-pmc'] if 'pmc' in group_names else [])
+        + (['xout-portal'] if 'portal' in group_names else [])
+        + (['xout-web'] if ('web' in group_names or 'tobi' in group_names) else [])
+        + (['xout-batchsplitter'] if 'batchsplitter' in group_names else [])
+      }}
+    xout_postcheck_service_components:
+      xout-modeshape: modeshape
+      xout-activemq-artemis: activemq
+      xout-pmc: pmc
+      xout-portal: portal
+      xout-web: web
+      xout-batchsplitter: batchsplitter
+
+- name: Collect final XOUT service snapshot
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_python_path }}"
+      - "{{ xout_manager_path }}"
+      - --json
+      - list
+  register: xout_postcheck_snapshot_raw
+  changed_when: false
+
+- name: Decode final XOUT service snapshot
+  ansible.builtin.set_fact:
+    xout_postcheck_services: "{{ xout_postcheck_snapshot_raw.stdout | from_json }}"
+
+- name: Require every expected service in final snapshot
+  ansible.builtin.assert:
+    that:
+      - >-
+        (xout_postcheck_services
+         | selectattr('name', 'equalto', item)
+         | list
+         | length) == 1
+    fail_msg: >-
+      Final postcheck on {{ inventory_hostname }} did not return exactly one
+      status row for {{ item }}.
+  loop: "{{ xout_postcheck_expected_services }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Validate final service runtime and boot policy
+  ansible.builtin.assert:
+    that:
+      - xout_postcheck_service_row.active == 'active'
+      - >-
+        (xout_postcheck_service_components[item]
+         in (xout_boot_disable_exempt_components | default([])))
+        or
+        (
+          xout_postcheck_service_row.enabled
+          not in ['enabled', 'enabled-runtime', '']
+        )
+    fail_msg: >-
+      Final service postcheck failed on {{ inventory_hostname }} for {{ item }}:
+      active={{ xout_postcheck_service_row.active }},
+      enabled={{ xout_postcheck_service_row.enabled }}.
+  vars:
+    xout_postcheck_service_row: >-
+      {{
+        xout_postcheck_services
+        | selectattr('name', 'equalto', item)
+        | list
+        | first
+      }}
+  loop: "{{ xout_postcheck_expected_services }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Verify CUPS on Portal host
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - is-active
+      - cups.service
+  register: xout_postcheck_cups
+  changed_when: false
+  failed_when: >-
+    xout_postcheck_cups.rc != 0
+    or xout_postcheck_cups.stdout | trim != 'active'
+  when:
+    - "'portal' in group_names"
+    - xout_check_cups | bool
+
+- name: Check retained Portal module state file
+  ansible.builtin.stat:
+    path: "{{ xout_module_state_file }}"
+  register: xout_postcheck_module_state
+  when: "'portal' in group_names"
+
+- name: Require clean Portal module state
+  ansible.builtin.assert:
+    that:
+      - not xout_postcheck_module_state.stat.exists
+    fail_msg: >-
+      Portal module state was not cleaned on {{ inventory_hostname }}:
+      {{ xout_module_state_file }}
+  when: "'portal' in group_names"
+
+- name: Verify Portal Jolokia and read final module state
+  ansible.builtin.command:
+    argv:
+      - "{{ xout_python_path }}"
+      - "{{ xout_manager_path }}"
+      - --json
+      - modules
+  register: xout_postcheck_modules_raw
+  changed_when: false
+  when: "'portal' in group_names"
+
+- name: Store final Portal module snapshot
+  ansible.builtin.set_fact:
+    xout_postcheck_modules: "{{ xout_postcheck_modules_raw.stdout | from_json }}"
+  when: "'portal' in group_names"
+
+- name: Mark host postcheck complete
+  ansible.builtin.set_fact:
+    xout_postcheck_host_ok: true
