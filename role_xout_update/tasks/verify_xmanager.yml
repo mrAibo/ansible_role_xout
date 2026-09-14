@@ -13,4 +13,11 @@
   register: xout_manager_version_results
   failed_when:
     - xout_manager_version_results.rc != 0 or 'xmanager.py 3.' not in xout_manager_version_results.stdout
-  when: xout_action != 'status'
+  when:
+    - xout_action != 'status'
+    - >-
+      not (
+        xout_action in ['plan', 'install', 'update']
+        and xout_operation_hosts | length > 0
+        and hostvars[xout_operation_hosts[0]].xout_preflight_plan is defined
+      )
