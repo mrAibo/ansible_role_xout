@@ -66,6 +66,24 @@ def main():
         return 0
 
     if "list" in argv:
+        services = []
+        for _, (_, service) in ALIASES.items():
+            if any(row["name"] == service for row in services):
+                continue
+            services.append(
+                {
+                    "name": service,
+                    "active": "active",
+                    "enabled": "enabled" if service == "xout-batchsplitter" else "disabled",
+                    "pid": "123",
+                    "version": "1.0-1",
+                    "memory": "1.0 MB",
+                }
+            )
+        print(json.dumps(services))
+        return 0
+
+    if "modules" in argv:
         print("[]")
         return 0
 
